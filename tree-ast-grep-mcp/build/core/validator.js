@@ -1,0 +1,472 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+export class ParameterValidator {
+    workspaceRoot;
+    blockedPaths;
+    constructor(workspaceRoot) {
+        this.workspaceRoot = path.resolve(workspaceRoot);
+        this.blockedPaths = this.getBlockedPaths();
+    }
+    getBlockedPaths() {
+        const systemPaths = [
+            '/etc', '/bin', '/usr', '/sys', '/proc', // Unix system dirs
+            'C:\\Windows', 'C:\\Program Files', // Windows system dirs
+            path.join(process.env.HOME || '', '.ssh'), // SSH keys
+            path.join(process.env.HOME || '', '.aws'), // AWS credentials
+            'node_modules/.bin', // Binary executables
+        ];
+        return systemPaths.map(p => path.resolve(p));
+    }
+    // Validate search parameters
+    validateSearchParams(params) {
+        const result = { valid: true, errors: [], warnings: [] };
+        // Validate pattern
+        if (!params.pattern || typeof params.pattern !== 'string' || params.pattern.trim().length === 0) {
+            result.valid = false;
+            result.errors.push('Pattern cannot be empty');
+            return result;
+        }
+        // Check for dangerous patterns
+        const dangerousPatterns = ['rm -rf', 'del /f', 'format c:', '> /dev/null'];
+        if (dangerousPatterns.some(dangerous => params.pattern.includes(dangerous))) {
+            result.valid = false;
+            result.errors.push('Pattern contains potentially dangerous commands');
+            return result;
+        }
+        // Validate AST pattern syntax
+        const patternValidation = this.validateAstPattern(params.pattern, params.language);
+        if (!patternValidation.valid) {
+            result.valid = false;
+            result.errors.push(...patternValidation.errors);
+            result.warnings.push(...patternValidation.warnings);
+        }
+        // Validate paths if provided
+        if (params.paths) {
+            const pathValidation = this.validatePaths(params.paths);
+            if (!pathValidation.valid) {
+                result.valid = false;
+                result.errors.push(...pathValidation.errors);
+            }
+        }
+        // Validate context
+        if (params.context !== undefined) {
+            if (typeof params.context !== 'number' || params.context < 0 || params.context > 10) {
+                result.valid = false;
+                result.errors.push('Context must be a number between 0 and 10');
+            }
+        }
+        // Validate maxMatches
+        if (params.maxMatches !== undefined) {
+            if (typeof params.maxMatches !== 'number' || params.maxMatches < 1 || params.maxMatches > 10000) {
+                result.valid = false;
+                result.errors.push('maxMatches must be a number between 1 and 10000');
+            }
+        }
+        result.sanitized = {
+            pattern: params.pattern.trim(),
+            paths: params.paths || ['.'],
+            language: params.language || this.detectLanguageFromPattern(params.pattern.trim()),
+            context: params.context ?? 3,
+            include: params.include,
+            exclude: params.exclude || this.getDefaultExcludes(),
+            maxMatches: params.maxMatches ?? 100,
+        };
+        return result;
+    }
+    // Validate replace parameters
+    validateReplaceParams(params) {
+        const result = { valid: true, errors: [], warnings: [] };
+        // Validate pattern
+        if (!params.pattern || typeof params.pattern !== 'string' || params.pattern.trim().length === 0) {
+            result.valid = false;
+            result.errors.push('Pattern cannot be empty');
+            return result;
+        }
+        // Validate replacement
+        if (params.replacement === undefined || params.replacement === null) {
+            result.valid = false;
+            result.errors.push('Replacement cannot be null or undefined');
+            return result;
+        }
+        // Validate AST pattern syntax
+        const patternValidation = this.validateAstPattern(params.pattern, params.language);
+        if (!patternValidation.valid) {
+            result.valid = false;
+            result.errors.push(...patternValidation.errors);
+            result.warnings.push(...patternValidation.warnings);
+        }
+        // Validate pattern-replacement consistency
+        const consistencyValidation = this.validatePatternReplacementConsistency(params.pattern, params.replacement);
+        if (!consistencyValidation.valid) {
+            result.valid = false;
+            result.errors.push(...consistencyValidation.errors);
+            result.warnings.push(...consistencyValidation.warnings);
+        }
+        // Validate paths if provided
+        if (params.paths) {
+            const pathValidation = this.validatePaths(params.paths);
+            if (!pathValidation.valid) {
+                result.valid = false;
+                result.errors.push(...pathValidation.errors);
+            }
+        }
+        result.sanitized = {
+            pattern: params.pattern.trim(),
+            replacement: String(params.replacement),
+            paths: params.paths || ['.'],
+            language: params.language || this.detectLanguageFromPattern(params.pattern.trim()),
+            dryRun: params.dryRun ?? true,
+            interactive: params.interactive ?? false,
+            include: params.include,
+            exclude: params.exclude || this.getDefaultExcludes(),
+        };
+        return result;
+    }
+    // Validate scan parameters
+    validateScanParams(params) {
+        const result = { valid: true, errors: [], warnings: [] };
+        // Validate format
+        if (params.format && !['json', 'text', 'github'].includes(params.format)) {
+            result.valid = false;
+            result.errors.push('Format must be one of: json, text, github');
+        }
+        // Validate severity
+        if (params.severity && !['error', 'warning', 'info', 'all'].includes(params.severity)) {
+            result.valid = false;
+            result.errors.push('Severity must be one of: error, warning, info, all');
+        }
+        // Validate paths if provided
+        if (params.paths) {
+            const pathValidation = this.validatePaths(params.paths);
+            if (!pathValidation.valid) {
+                result.valid = false;
+                result.errors.push(...pathValidation.errors);
+            }
+        }
+        result.sanitized = {
+            rules: params.rules,
+            paths: params.paths || ['.'],
+            format: params.format || 'json',
+            severity: params.severity || 'all',
+            ruleIds: params.ruleIds,
+            include: params.include,
+            exclude: params.exclude || this.getDefaultExcludes(),
+        };
+        return result;
+    }
+    // Validate rewrite parameters
+    validateRewriteParams(params) {
+        const result = { valid: true, errors: [], warnings: [] };
+        // Validate rules
+        if (!params.rules || typeof params.rules !== 'string' || params.rules.trim().length === 0) {
+            result.valid = false;
+            result.errors.push('Rules cannot be empty');
+            return result;
+        }
+        // Validate paths if provided
+        if (params.paths) {
+            const pathValidation = this.validatePaths(params.paths);
+            if (!pathValidation.valid) {
+                result.valid = false;
+                result.errors.push(...pathValidation.errors);
+            }
+        }
+        result.sanitized = {
+            rules: params.rules.trim(),
+            paths: params.paths || ['.'],
+            language: params.language,
+            dryRun: params.dryRun ?? true,
+        };
+        return result;
+    }
+    // Validate paths for security
+    validatePaths(paths) {
+        const result = { valid: true, errors: [], warnings: [] };
+        const sanitizedPaths = [];
+        for (const inputPath of paths) {
+            try {
+                // Resolve and normalize path
+                const resolvedPath = path.resolve(this.workspaceRoot, inputPath);
+                // Security check: ensure path is within workspace
+                if (!resolvedPath.startsWith(this.workspaceRoot)) {
+                    result.valid = false;
+                    result.errors.push(`Path "${inputPath}" is outside workspace root`);
+                    continue;
+                }
+                // Check for blocked system directories
+                if (this.blockedPaths.some(blocked => resolvedPath.startsWith(blocked))) {
+                    result.valid = false;
+                    result.errors.push(`Access to system directory "${inputPath}" is blocked`);
+                    continue;
+                }
+                sanitizedPaths.push(resolvedPath);
+            }
+            catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                result.valid = false;
+                result.errors.push(`Invalid path "${inputPath}": ${errorMessage}`);
+            }
+        }
+        result.sanitized = sanitizedPaths;
+        return result;
+    }
+    // Validate resource limits
+    async validateResourceLimits(paths) {
+        const result = { valid: true, errors: [], warnings: [] };
+        const maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '10485760'); // 10MB
+        const maxFiles = parseInt(process.env.MAX_FILES || '10000');
+        let totalFiles = 0;
+        for (const dirPath of paths) {
+            try {
+                const stats = await fs.stat(dirPath);
+                if (stats.isFile()) {
+                    totalFiles++;
+                    if (stats.size > maxFileSize) {
+                        result.warnings.push(`File "${dirPath}" (${stats.size} bytes) exceeds size limit`);
+                    }
+                }
+                else if (stats.isDirectory()) {
+                    // Count files in directory
+                    const files = await this.countFilesRecursive(dirPath);
+                    totalFiles += files;
+                }
+            }
+            catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                result.warnings.push(`Cannot access "${dirPath}": ${errorMessage}`);
+            }
+        }
+        if (totalFiles > maxFiles) {
+            result.valid = false;
+            result.errors.push(`Total files (${totalFiles}) exceeds limit (${maxFiles})`);
+        }
+        return result;
+    }
+    async countFilesRecursive(dir) {
+        let count = 0;
+        try {
+            const items = await fs.readdir(dir);
+            for (const item of items) {
+                const itemPath = path.join(dir, item);
+                try {
+                    const stats = await fs.stat(itemPath);
+                    if (stats.isFile()) {
+                        count++;
+                    }
+                    else if (stats.isDirectory() && !item.startsWith('.')) {
+                        count += await this.countFilesRecursive(itemPath);
+                    }
+                }
+                catch {
+                    // Skip inaccessible files
+                }
+            }
+        }
+        catch {
+            // Skip inaccessible directories
+        }
+        return count;
+    }
+    // Extract metavariables from AST pattern
+    extractMetavariables(pattern) {
+        const single = [];
+        const multi = [];
+        // Match single metavariables: $VAR, $_, $VAR1
+        const singleMatches = pattern.match(/\$[A-Z_][A-Z0-9_]*/g) || [];
+        single.push(...singleMatches.map(m => m.slice(1))); // Remove $
+        // Match multi metavariables: $$$VAR, $$$
+        const multiMatches = pattern.match(/\$\$\$[A-Z_]*[A-Z0-9_]*/g) || [];
+        multi.push(...multiMatches.map(m => m.slice(3))); // Remove $$$
+        return { single, multi };
+    }
+    // Validate AST pattern syntax
+    validateAstPattern(pattern, language) {
+        const result = { valid: true, errors: [], warnings: [] };
+        // Check for basic syntax issues
+        const trimmedPattern = pattern.trim();
+        // Check for unmatched brackets/parentheses
+        const brackets = { '(': ')', '[': ']', '{': '}' };
+        const stack = [];
+        for (const char of trimmedPattern) {
+            if (char in brackets) {
+                stack.push(brackets[char]);
+            }
+            else if (Object.values(brackets).includes(char)) {
+                if (stack.pop() !== char) {
+                    result.errors.push('Pattern has unmatched brackets, parentheses, or braces');
+                    result.valid = false;
+                    break;
+                }
+            }
+        }
+        // Check for invalid metavariable syntax
+        const invalidMetavars = trimmedPattern.match(/\$[a-z][a-zA-Z0-9_]*/g);
+        if (invalidMetavars) {
+            result.errors.push(`Invalid metavariable syntax: ${invalidMetavars.join(', ')}. Metavariables must start with uppercase letter or underscore (e.g., $VAR, $_)`);
+            result.valid = false;
+        }
+        // Check for incomplete metavariables
+        const incompleteMetavars = trimmedPattern.match(/\$\$[^$]/g);
+        if (incompleteMetavars) {
+            result.errors.push('Incomplete multi-metavariable syntax. Use $$$ for multi-node matching');
+            result.valid = false;
+        }
+        // Language-specific validation
+        if (language) {
+            const langValidation = this.validateLanguageSpecificPattern(trimmedPattern, language);
+            if (!langValidation.valid) {
+                result.errors.push(...langValidation.errors);
+                result.warnings.push(...langValidation.warnings);
+                result.valid = false;
+            }
+        }
+        else if (this.requiresLanguageHint(trimmedPattern)) {
+            result.warnings.push('Pattern may benefit from specifying a language parameter for better matching');
+        }
+        return result;
+    }
+    // Validate pattern-replacement consistency
+    validatePatternReplacementConsistency(pattern, replacement) {
+        const result = { valid: true, errors: [], warnings: [] };
+        const patternVars = this.extractMetavariables(pattern);
+        const replacementVars = this.extractMetavariables(replacement);
+        // Check that all replacement metavariables exist in pattern
+        const allPatternVars = [...patternVars.single, ...patternVars.multi];
+        const allReplacementVars = [...replacementVars.single, ...replacementVars.multi];
+        const undefinedVars = allReplacementVars.filter(rv => !allPatternVars.includes(rv));
+        if (undefinedVars.length > 0) {
+            result.valid = false;
+            result.errors.push(`Replacement uses undefined metavariables: ${undefinedVars.map(v => '$' + v).join(', ')}. Available from pattern: ${allPatternVars.map(v => '$' + v).join(', ')}`);
+        }
+        // Warn about unused pattern variables
+        const unusedVars = allPatternVars.filter(pv => !allReplacementVars.includes(pv) && pv !== '_');
+        if (unusedVars.length > 0) {
+            result.warnings.push(`Pattern defines unused metavariables: ${unusedVars.map(v => '$' + v).join(', ')}`);
+        }
+        return result;
+    }
+    // Check if pattern requires language hint
+    requiresLanguageHint(pattern) {
+        // Patterns that typically need language context
+        const languageSpecificKeywords = [
+            'function', 'class', 'interface', 'import', 'export', // JS/TS
+            'def', 'class', 'import', 'from', // Python
+            'public', 'private', 'protected', 'static', // Java/C#
+            'fn', 'impl', 'trait', 'use', // Rust
+            'func', 'type', 'var', 'const', // Go
+        ];
+        return languageSpecificKeywords.some(keyword => pattern.includes(keyword));
+    }
+    // Language-specific pattern validation
+    validateLanguageSpecificPattern(pattern, language) {
+        const result = { valid: true, errors: [], warnings: [] };
+        switch (language.toLowerCase()) {
+            case 'javascript':
+            case 'typescript':
+                // Check for common JS/TS patterns
+                if (pattern.includes('function') && !pattern.includes('(')) {
+                    result.warnings.push('JavaScript function patterns usually need parentheses: function $NAME($ARGS)');
+                }
+                if (pattern.includes('import') && !pattern.includes('from')) {
+                    result.warnings.push('JavaScript import patterns often need "from": import $WHAT from $WHERE');
+                }
+                break;
+            case 'java':
+                // Check for common Java patterns
+                if (pattern.includes('public') && !pattern.includes('(') && !pattern.includes('{')) {
+                    result.warnings.push('Java method patterns usually need parentheses and braces: public $TYPE $NAME($ARGS) { $$$ }');
+                }
+                break;
+            case 'python':
+                // Check for common Python patterns
+                if (pattern.includes('def') && !pattern.includes(':')) {
+                    result.warnings.push('Python function patterns need colon: def $NAME($ARGS): $$$');
+                }
+                break;
+            default:
+                // Unknown language - provide general guidance
+                if (this.requiresLanguageHint(pattern)) {
+                    result.warnings.push(`Language "${language}" not specifically supported. Pattern may need adjustment for proper AST parsing.`);
+                }
+        }
+        return result;
+    }
+    // Get default exclude patterns
+    getDefaultExcludes() {
+        return [
+            'node_modules/**',
+            '.git/**',
+            'dist/**',
+            'build/**',
+            'coverage/**',
+            '*.min.js',
+            '*.bundle.js',
+            '.next/**',
+            '.vscode/**',
+            '.idea/**'
+        ];
+    }
+    // Detect language from pattern content
+    detectLanguageFromPattern(pattern) {
+        // JavaScript/TypeScript patterns
+        if (pattern.match(/\b(function|const|let|var|import|export|class|interface|type)\b/)) {
+            if (pattern.includes('interface') || pattern.includes('type ') || pattern.includes(': ')) {
+                return 'typescript';
+            }
+            return 'javascript';
+        }
+        // Python patterns
+        if (pattern.match(/\b(def|class|import|from|if __name__|print)\b/) || pattern.includes(':')) {
+            return 'python';
+        }
+        // Java patterns
+        if (pattern.match(/\b(public|private|protected|static|class|interface|extends|implements)\b/)) {
+            return 'java';
+        }
+        // Rust patterns
+        if (pattern.match(/\b(fn|impl|trait|struct|enum|use|mod)\b/)) {
+            return 'rust';
+        }
+        // Go patterns
+        if (pattern.match(/\b(func|type|var|const|package|import)\b/)) {
+            return 'go';
+        }
+        // C/C++ patterns
+        if (pattern.match(/\b(#include|struct|typedef|void|int|char|float|double)\b/)) {
+            return 'cpp';
+        }
+        return undefined;
+    }
+    // Translate common ast-grep errors to user-friendly messages
+    translateAstGrepError(stderr) {
+        const errorMappings = [
+            {
+                pattern: /pattern .* is not valid/i,
+                message: 'Pattern syntax is invalid. Check for proper brackets, quotes, and metavariable syntax ($VAR, $$$)'
+            },
+            {
+                pattern: /language .* is not supported/i,
+                message: 'Language not supported. Try: javascript, python, java, rust, go, cpp, etc.'
+            },
+            {
+                pattern: /no matches found/i,
+                message: 'No matches found. Consider: 1) Adding language parameter, 2) Simplifying pattern, 3) Using metavariables like $VAR'
+            },
+            {
+                pattern: /parse error/i,
+                message: 'Code parsing failed. Check if files are valid for the specified language'
+            },
+            {
+                pattern: /timeout/i,
+                message: 'Operation timed out. Try narrowing search paths or simplifying pattern'
+            }
+        ];
+        for (const mapping of errorMappings) {
+            if (mapping.pattern.test(stderr)) {
+                return mapping.message;
+            }
+        }
+        return stderr; // Return original if no mapping found
+    }
+}
+//# sourceMappingURL=validator.js.map
