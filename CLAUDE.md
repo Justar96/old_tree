@@ -2,60 +2,92 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Development Principles
+## Project Overview - SIMPLIFIED ARCHITECTURE
 
-### Core Philosophy
-Think carefully and implement the most concise solution that changes as little code as possible.
+This is a **direct, minimal wrapper** around ast-grep CLI with zero abstractions. The entire codebase is intentionally simple and straightforward.
 
-### Required Approach
-1. **Read existing code first** - Always examine the codebase to understand patterns and reuse existing functions
-2. **Question assumptions** - Ask clarifying questions if intent is unclear rather than guessing
-3. **Favor simplicity** - Choose working solutions over "enterprise" patterns
+## Core Philosophy - ULTRA SIMPLICITY
 
-### Error Handling Strategy
-- **Fail fast** for critical configuration errors
-- **Log and continue** for optional feature failures
-- **Graceful degradation** when external services are unavailable
-- **User-friendly messages** through proper error context
+**NEVER ADD COMPLEXITY**
+- Direct ast-grep command execution only
+- No abstractions, layers, or "enterprise" patterns
+- Build command args → Execute → Parse results
+- When in doubt, choose the simplest solution
 
-### Testing Requirements
-- Use real services only - no mocking
-- Complete each test fully before proceeding to the next
-- Structure tests correctly before blaming the codebase
-- Write verbose tests for debugging purposes
+## Current Architecture (SIMPLIFIED)
 
-### Communication Style
-- Provide criticism when warranted
-- Suggest better approaches when they exist
-- Reference relevant standards and conventions
-- Be skeptical and concise
-- Ask questions rather than making assumptions
+### Essential Files Only
+```
+src/
+├── index.ts           # MCP server entry point
+├── core/
+│   ├── binary-manager.ts    # ast-grep binary execution
+│   └── workspace-manager.ts # Basic workspace detection
+├── tools/
+│   ├── search.ts      # Direct ast-grep run --pattern
+│   ├── replace.ts     # Direct ast-grep run --rewrite
+│   └── scan.ts        # Direct ast-grep scan --rule
+└── types/
+    └── errors.ts      # Basic error types
+```
 
-### Code Quality Standards (NON-NEGOTIABLE)
+### Tool Implementation Pattern
 
-**Implementation Standards:**
-- Complete implementations only - no partial work or "TODO" comments
-- No code duplication - reuse existing functions and constants
-- No dead code - delete unused code entirely
-- Clean separation of concerns
-- No emojis use ascii characters or unicode characters if necessary.
-- Use human written style.
+Each tool follows this **exact pattern**:
+```typescript
+async execute(params: any): Promise<any> {
+  // 1. Basic validation (pattern required)
+  // 2. Build ast-grep command array directly
+  // 3. Execute ast-grep with minimal options
+  // 4. Parse results simply
+  // 5. Return structured data
+}
+```
 
-- **Never leave function stubs** - If you cannot complete a function implementation:
-  1. Stop immediately and inform the user
-  2. Explain what information or decisions are needed
-  3. Ask for comprehensive requirements before proceeding
-  4. Do not create placeholder functions with TODO comments
+**NO ABSTRACTIONS - NO INHERITANCE - NO COMPLEXITY**
 
-**Testing Standards:**
-- Test every function
-- Design tests to reveal actual flaws and reflect real usage
-- No superficial tests that merely check happy paths
+## Development Rules (NON-NEGOTIABLE)
 
-**Architecture Standards:**
-- Follow existing naming patterns consistently
-- Avoid over-engineering - prefer simple functions over complex abstractions
-- Prevent resource leaks - clean up connections, timeouts, and event listeners
+### Implementation Standards
+- **Direct command execution only** - Never abstract ast-grep calls
+- **Minimal validation** - Only validate what's absolutely required
+- **Simple parsing** - Basic string/JSON processing only
+- **Zero overhead** - No performance cost vs direct ast-grep usage
+- **Complete implementations only** - No TODOs or partial work
+
+### Architecture Constraints
+- **No base classes** - Each tool is independent
+- **No shared utilities** - Duplicate simple code if needed
+- **No complex error handling** - Basic try/catch only
+- **No resource management** - Let ast-grep handle everything
+- **No path abstraction** - Use paths directly
+
+### Code Quality
+- **Favor duplication over abstraction**
+- **Inline simple operations**
+- **Direct variable access**
+- **Minimal function calls**
+- **Clear, obvious code flow**
+
+## AST-Grep Integration - DIRECT ONLY
+
+### Command Patterns (DO NOT ABSTRACT)
+```bash
+# Search
+ast-grep run --pattern <PATTERN> --lang <LANG> --json=stream
+
+# Replace
+ast-grep run --pattern <PATTERN> --rewrite <REPLACEMENT> --lang <LANG>
+
+# Scan
+ast-grep scan --rule <RULE_FILE> --json=stream
+```
+
+### Metavariable Best Practices
+- **Named variables work best**: `$NAME`, `$ARG`, `$BODY`
+- **Multi-node patterns**: Use `$$$BODY` (named) not bare `$$$`
+- **Simple patterns preferred**: `console.log($ARG)` vs complex structural patterns
+- **Test patterns directly** with ast-grep CLI first
 
 ## Build and Development Commands
 
@@ -63,200 +95,43 @@ Think carefully and implement the most concise solution that changes as little c
 # Build the project
 npm run build
 
-# Development mode with hot reload
+# Development mode
 npm run dev
 
-# Clean build artifacts
-npm run clean
-
-# Full build preparation for publishing
-npm run prepublishOnly
+# Test manually
+node build/index.js
 ```
 
-## Testing
+## Testing Philosophy
 
-The project uses simple test files in the root directory:
-- `test-client.js` - Basic client functionality tests
-- `test-example.js` - Example usage demonstrations
+- **Test against direct ast-grep behavior** - Our tools must match exactly
+- **Use inline code parameter** - Most reliable for testing
+- **Start with simple patterns** - Build up complexity gradually
+- **No mocking** - Use real ast-grep binary only
 
-Run tests manually by executing:
-```bash
-node test-client.js
-node test-example.js
-```
+## What NOT to Do
 
-## Project Architecture
+❌ **Never create base classes or shared utilities**
+❌ **Never add validation layers or complex error handling**
+❌ **Never abstract ast-grep command construction**
+❌ **Never add "enterprise" patterns or dependency injection**
+❌ **Never optimize prematurely or add unnecessary features**
 
-### Core Components
+## What TO Do
 
-**MCP Server Entry Point (`src/index.ts`)**
-- Parses command-line arguments for installation options (`--use-system`, `--auto-install`, `--platform=<os>`)
-- Initializes binary manager, workspace manager, and tool handlers
-- Handles MCP protocol communication via stdio transport
-- Provides structured error handling with different error types
+✅ **Keep each tool file independent and simple**
+✅ **Build ast-grep commands directly in arrays**
+✅ **Parse results with basic string/JSON operations**
+✅ **Return structured data that matches expected format**
+✅ **Test every change against direct ast-grep CLI**
 
-**Binary Management (`src/core/binary-manager.ts`)**
-- Multi-tier binary resolution strategy:
-  1. Custom path via `AST_GREP_BINARY_PATH` env var
-  2. Auto-install platform-specific binary to cache
-  3. System binary from PATH
-  4. Graceful failure with installation instructions
-- Automatic download and caching of ast-grep binaries for different platforms
-- Binary validation and version checking
+## Emergency Simplification
 
-**Workspace Security (`src/core/workspace-manager.ts`)**
-- Enforces workspace boundaries to prevent path traversal attacks
-- Auto-detects project root using indicators (`.git`, `package.json`, etc.)
-- Blocks access to system directories and sensitive paths
-- Validates all file paths against workspace boundaries
+If the codebase ever becomes complex again:
+1. **Delete all abstractions immediately**
+2. **Revert to direct ast-grep command execution**
+3. **Remove any inheritance or shared utilities**
+4. **Keep only the essential 7 files**
+5. **Test that behavior matches ast-grep CLI exactly**
 
-**Parameter Validation (`src/core/validator.ts`)**
-- Comprehensive Zod-based schema validation
-- Resource limit enforcement (file size, count, timeout)
-- Input sanitization and normalization
-- Security validation for path traversal prevention
-
-### Tool Implementation
-
-**AST Search (`src/tools/search.ts`)**
-- Maps to `ast-grep run --pattern <PATTERN> --lang <LANG> --json=stream`
-- Supports context lines, glob patterns, and language hints
-- Parses JSON output and normalizes line numbers (0-based to 1-based)
-- Returns structured search results with file locations and context
-
-**AST Replace (`src/tools/replace.ts`)**
-- Maps to `ast-grep run --pattern <PATTERN> --rewrite <REPLACEMENT>`
-- Defaults to dry-run mode for safety
-- Supports interactive and batch replacement modes
-- Provides preview functionality before applying changes
-
-**AST Scan (`src/tools/scan.ts`)**
-- Maps to `ast-grep scan --config <RULES_FILE> --json=stream`
-- Supports inline YAML rules and external rule files
-- Performs rule-based code analysis and linting
-- Returns structured analysis results with findings
-
-### Type System
-
-**Schemas (`src/types/schemas.ts`)**
-- Zod schemas for all parameter validation
-- Type inference for TypeScript safety
-- Default values and constraints for all parameters
-- Workspace configuration and tool parameter types
-
-**Error Handling (`src/types/errors.ts`)**
-- Custom error hierarchy with specific error types:
-  - `ValidationError` - Invalid parameters (recoverable)
-  - `BinaryError` - Binary issues (not recoverable)
-  - `SecurityError` - Path security violations (not recoverable)
-  - `ExecutionError` - ast-grep execution failure (recoverable)
-  - `TimeoutError` - Operation timeout (recoverable)
-
-## Environment Variables
-
-- `AST_GREP_BINARY_PATH` - Custom ast-grep binary path
-- `AST_GREP_CACHE_DIR` - Binary cache directory (default: `~/.ast-grep-mcp/binaries/`)
-- `WORKSPACE_ROOT` - Explicit workspace root directory
-- `MAX_FILE_SIZE` - Maximum file size limit (default: 10MB)
-- `MAX_FILES` - Maximum file count limit (default: 10,000)
-
-## Installation Options
-
-The server supports multiple installation modes via command-line flags:
-- `--use-system` - Use system-installed ast-grep (lightweight)
-- `--auto-install` - Auto-detect and install platform binary
-- `--platform=<os>` - Install specific platform binary (win32, darwin, linux)
-- `--cache-dir=<path>` - Custom binary cache directory
-
-## Security Model
-
-- All operations restricted to workspace boundaries
-- Path traversal prevention with comprehensive validation
-- System directory access blocked (Windows system dirs, Unix /etc, /bin, etc.)
-- Resource limits enforced (file size, count, execution timeout)
-- Dry-run mode enabled by default for modification operations
-
-## ast-grep Integration
-
-The project integrates with ast-grep CLI using specific command patterns:
-- **Search**: `ast-grep run --pattern <PATTERN> --lang <LANG> --json=stream [PATHS]`
-- **Replace**: `ast-grep run --pattern <PATTERN> --rewrite <REPLACEMENT> --update-all [PATHS]`
-- **Scan**: `ast-grep scan --rule <RULES_FILE> --json=stream [PATHS]`
-
-Pattern syntax supports:
-- Literal patterns: `"console.log"`
-- Metavariables: `"console.log($_)"` (single expression, use UPPERCASE: $VAR)
-- Multiple variables: `"function $NAME($ARGS) { $$$ }"` (body content with triple $)
-- Language-specific patterns for JavaScript, Python, Java, etc.
-
-### Best Practices for Pattern Writing
-- **Metavariables must use UPPERCASE**: Use `$VAR`, not `$var`
-- **Multi-node matching**: Use `$$$` (triple dollar), not `$$`
-- **Pattern validation**: Patterns must be syntactically valid code
-- **Language specificity**: Always specify language for accurate parsing
-- **Constraint usage**: Use `constraints:` section for metavariable filtering
-- **Rule composition**: Use `all:`, `any:`, `not:` for complex matching
-
-### Common Pattern Examples
-```yaml
-# Function calls with any arguments
-pattern: "console.log($$$ARGS)"
-
-# Variable declarations with constraints
-pattern: "var $NAME = $VALUE"
-constraints:
-  NAME:
-    regex: "^[a-z]"
-
-# Complex rule composition
-rule:
-  all:
-  - pattern: "function $NAME($ARGS) { $$$ }"
-  - inside:
-      pattern: "class $CLASS { $$$ }"
-  - not:
-      pattern: "return;"
-```
-
-## Development Notes
-
-- Project uses ES modules with TypeScript compilation to `build/` directory
-- Minimal dependencies: MCP SDK and Zod for validation
-- Platform-specific binaries managed through optional dependencies
-- No traditional test framework - uses simple Node.js test files
-- Error messages include context for debugging and user guidance
-
-## Recent Improvements (Based on QA Feedback)
-
-### Fixed Issues
-1. **Complex Constraint Syntax**: Improved YAML rule generation with proper `constraints:` section and composite rule structure using `all:`, `any:`, `not:` patterns
-2. **Enhanced Error Reporting**: Added specific error messages for pattern syntax, language detection, YAML structure, and constraint issues with actionable guidance
-3. **Line Number Corrections**: Fixed line 0 issues by ensuring proper 0-based to 1-based conversion and validation
-4. **Improved Path Handling**: Enhanced path resolution with better cross-platform support, detailed error messages, and suggestions for missing paths
-
-### Performance Optimizations
-- Maintained fast execution through parallel processing
-- Improved resource limit validation
-- Enhanced file counting for large codebases
-
-### Best Practice Recommendations
-1. **Use Inline Code**: Most reliable - use `code` parameter instead of file paths
-2. **Absolute Paths**: For file-based operations, use absolute paths (e.g., `D:\path\to\file.js`)
-3. **Pattern Testing**: Start simple, test incrementally with ast-grep playground
-4. **Metavariable Guidelines**: UPPERCASE names, `$$$` for multi-node
-5. **Language Specification**: Always specify language for accurate parsing
-6. **Rule Composition**: Use composite rules for complex constraints
-
-### Tool Comparison Advantages
-- **vs grep/ripgrep**: Structural code awareness, not just text matching
-- **vs sed/awk**: Syntax-aware replacements prevent code corruption
-- **vs IDE refactoring**: Scriptable, batch-oriented, cross-project
-- **vs manual review**: Dramatically faster for repetitive patterns
-
-## QA Assessment Integration
-Based on comprehensive QA testing, this tool achieves ⭐⭐⭐⭐⭐ rating for:
-- **Performance**: Fast execution (67ms for 258 matches, 51ms for 33 complex matches)
-- **Flexibility**: Simple text to complex structural transformations
-- **Safety**: Dry-run capabilities prevent code corruption
-- **Extensibility**: Custom rule creation for team-specific standards
-- **Accuracy**: AST-based understanding vs text-only tools
+Remember: **Simple is better than complex. Direct is better than abstract.**

@@ -438,10 +438,10 @@ export class ParameterValidator {
             result.errors.push('Incomplete multi-metavariable syntax. Use $$$ for multi-node matching');
             result.valid = false;
         }
-        // Check for bare $$$ usage (should be named for rewrite compatibility)
+        // Check for bare $$$ usage - it's valid but named is clearer
         const bareTripleVars = trimmedPattern.match(/\$\$\$(?![A-Z_][A-Z0-9_]*)/g);
         if (bareTripleVars && bareTripleVars.length > 0) {
-            result.warnings.push('Consider using named multi-metavariables (e.g., $$$ARGS, $$$BODY) instead of bare $$$ for better rewrite compatibility');
+            result.warnings.push('Consider using named multi-metavariables (e.g., $$$ARGS, $$$BODY) instead of bare $$$ for better readability (bare $$$ is valid)');
         }
         // Language-specific validation
         if (language) {
@@ -512,6 +512,14 @@ export class ParameterValidator {
                 if (/\bfunction\s+\$[A-Z_][A-Z0-9_]*\s*\([^)]*\)\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
                     result.errors.push('JavaScript function pattern needs body. Use: function $NAME($ARGS) { $$$ }');
                     result.valid = false;
+                }
+                // CRITICAL: Check for complex patterns known to cause issues with ast-grep
+                if (/\bfunction\s+\$[A-Z_][A-Z0-9_]*\s*\([^)]*\)\s*\{\s*\$\$\$\s*\}/.test(pattern)) {
+                    result.warnings.push('Complex function patterns with $$$ may not match reliably in ast-grep. Consider simpler patterns like "function $NAME($ARGS)" or use named body variables like "$BODY" instead of "$$$".');
+                }
+                // Check for problematic multi-metavariable usage
+                if (pattern.includes('$$$') && /\bfunction|\bclass|\bif|\bfor|\bwhile/.test(pattern)) {
+                    result.warnings.push('Complex structural patterns with $$$ have known reliability issues. Consider: 1) Using named metavariables like $BODY instead of $$$, 2) Breaking into simpler patterns, or 3) Using contextual matching with inside/has patterns.');
                 }
                 if (/\btry\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
                     result.errors.push('JavaScript try pattern needs body. Use: try { $$$ }');

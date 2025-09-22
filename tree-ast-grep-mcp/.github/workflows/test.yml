@@ -1,0 +1,150 @@
+name: Test Suite
+
+# DISABLED: CI/CD tests are disabled to avoid automatic execution
+# Uncomment the 'on:' section below to re-enable automated testing
+
+# on:
+#   push:
+#     branches: [ main, develop ]
+#   pull_request:
+#     branches: [ main ]
+
+# Manual trigger only - can be run manually from GitHub Actions tab
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x, 22.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install ast-grep
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" == "Linux" ]]; then
+          curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/ast-grep-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          sudo mv ast-grep /usr/local/bin/
+        elif [[ "$RUNNER_OS" == "Windows" ]]; then
+          curl -L -o ast-grep.zip https://github.com/ast-grep/ast-grep/releases/latest/download/ast-grep-x86_64-pc-windows-msvc.zip
+          unzip ast-grep.zip
+          mkdir -p /usr/local/bin 2>/dev/null || true
+          mv ast-grep.exe /usr/local/bin/ 2>/dev/null || cp ast-grep.exe /c/Windows/System32/
+        elif [[ "$RUNNER_OS" == "macOS" ]]; then
+          curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/ast-grep-x86_64-apple-darwin.tar.gz | tar xz
+          sudo mv ast-grep /usr/local/bin/
+        fi
+
+    - name: Verify ast-grep installation
+      run: ast-grep --version
+
+    - name: Run unit tests
+      run: npm run test:unit
+
+    - name: Run integration tests
+      run: npm run test:integration
+
+    - name: Run all tests
+      run: npm test
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install ast-grep
+      run: |
+        curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/ast-grep-x86_64-unknown-linux-gnu.tar.gz | tar xz
+        sudo mv ast-grep /usr/local/bin/
+
+    - name: Run tests with coverage
+      run: npm run test:coverage
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check TypeScript types
+      run: npx tsc --noEmit
+
+    - name: Check formatting (if prettier is configured)
+      run: |
+        if [ -f ".prettierrc" ] || [ -f "prettier.config.js" ]; then
+          npx prettier --check .
+        else
+          echo "No prettier config found, skipping formatting check"
+        fi
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run security audit
+      run: npm audit --audit-level moderate
+
+    - name: Check for known vulnerabilities
+      run: npx audit-ci --moderate

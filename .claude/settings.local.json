@@ -14,7 +14,15 @@
       "WebFetch(domain:docs.codemod.com)",
       "WebFetch(domain:codemod.com)",
       "WebSearch",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(ast-grep:*)",
+      "Bash(npm test)",
+      "Bash(npm install:*)",
+      "Bash(npm run test:unit:*)",
+      "Bash(timeout 30 npm run test:unit)",
+      "Bash(timeout 15 npm run test:unit)",
+      "Bash(timeout 30 npm run test:integration)",
+      "Bash(timeout 30 npm run test:complex)"
     ],
     "deny": [],
     "ask": []

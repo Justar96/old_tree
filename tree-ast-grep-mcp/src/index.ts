@@ -8,9 +8,9 @@ import { InstallationOptions } from './types/errors.js';
 import { WorkspaceManager } from './core/workspace-manager.js';
 import { SearchTool } from './tools/search.js';
 import { ReplaceTool } from './tools/replace.js';
-import { RunRuleTool } from './tools/rule-builder.js';
+import { ScanTool } from './tools/scan.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
-import { SearchParams, ReplaceParams, RunRuleParams } from './types/schemas.js';
+// Removed complex schema imports - using simple any types now
 
 /**
  * Parse CLI arguments and environment variables into installation options.
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
     // Initialize tools
     const searchTool = new SearchTool(binaryManager, workspaceManager);
     const replaceTool = new ReplaceTool(binaryManager, workspaceManager);
-    const ruleRunnerTool = new RunRuleTool(workspaceManager, binaryManager);
+    const scanTool = new ScanTool(workspaceManager, binaryManager);
 
     // Create MCP server
     const server = new Server(
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
         tools: [
           SearchTool.getSchema(),
           ReplaceTool.getSchema(),
-          RunRuleTool.getSchema(),
+          ScanTool.getSchema(),
         ],
       };
     });
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
       try {
         switch (name) {
           case 'ast_search':
-            const searchResult = await searchTool.execute(args as SearchParams);
+            const searchResult = await searchTool.execute(args);
             return {
               content: [
                 {
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
             };
 
           case 'ast_replace':
-            const replaceResult = await replaceTool.execute(args as ReplaceParams);
+            const replaceResult = await replaceTool.execute(args);
             return {
               content: [
                 {
@@ -165,13 +165,12 @@ async function main(): Promise<void> {
               ],
             };
 
-
           case 'ast_run_rule':
-            const ruleResult = await ruleRunnerTool.execute(args as RunRuleParams);
+            const scanResult = await scanTool.execute(args);
             return {
               content: [
-                { type: 'text', text: ruleResult.yaml },
-                { type: 'text', text: `\n---\n${JSON.stringify(ruleResult.scan, null, 2)}` },
+                { type: 'text', text: scanResult.yaml },
+                { type: 'text', text: `\n---\n${JSON.stringify(scanResult.scan, null, 2)}` },
               ],
             };
 

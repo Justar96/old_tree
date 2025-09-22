@@ -1,38 +1,63 @@
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
-import { BaseTool } from '../core/tool-base.js';
-import { ScanParams, ScanResult } from '../types/schemas.js';
 /**
- * Executes ast-grep scan operations and aggregates diagnostics for MCP clients.
+ * Rule builder that generates YAML and runs ast-grep scan
  */
-export declare class ScanTool extends BaseTool {
-    /**
-     * Initialize the scan tool with workspace context and binary execution support.
-     */
-    constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
-    /**
-     * Run ast-grep scan with validation and enrich the output with summary metrics.
-     */
-    execute(params: ScanParams): Promise<ScanResult>;
-    private scanWithRules;
-    private scanWithoutRules;
-    private createTemporaryRulesFile;
-    private buildScanArgs;
-    private parseScanResults;
-    private parseSingleFinding;
-    private extractFilesScanned;
-    private countFilesInPaths;
-    private countFilesInDirectory;
-    /**
-     * Describe the MCP schema for the scan tool.
-     */
+export declare class ScanTool {
+    private workspaceManager;
+    private binaryManager;
+    constructor(workspaceManager: WorkspaceManager, binaryManager: AstGrepBinaryManager);
+    execute(params: any): Promise<any>;
+    private buildYaml;
+    private parseFindings;
     static getSchema(): {
         name: string;
         description: string;
         inputSchema: {
             type: string;
             properties: {
-                rules: {
+                id: {
+                    type: string;
+                    description: string;
+                };
+                language: {
+                    type: string;
+                    description: string;
+                };
+                pattern: {
+                    type: string;
+                    description: string;
+                };
+                message: {
+                    type: string;
+                    description: string;
+                };
+                severity: {
+                    type: string;
+                    enum: string[];
+                    default: string;
+                    description: string;
+                };
+                where: {
+                    type: string;
+                    items: {
+                        type: string;
+                        properties: {
+                            metavariable: {
+                                type: string;
+                            };
+                            regex: {
+                                type: string;
+                            };
+                            equals: {
+                                type: string;
+                            };
+                        };
+                        required: string[];
+                    };
+                    description: string;
+                };
+                fix: {
                     type: string;
                     description: string;
                 };
@@ -43,79 +68,9 @@ export declare class ScanTool extends BaseTool {
                     };
                     description: string;
                 };
-                format: {
-                    type: string;
-                    enum: string[];
-                    default: string;
-                    description: string;
-                };
-                severity: {
-                    type: string;
-                    enum: string[];
-                    default: string;
-                    description: string;
-                };
-                ruleIds: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
-                    description: string;
-                };
-                include: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
-                    description: string;
-                };
-                exclude: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
-                    description: string;
-                };
                 timeoutMs: {
                     type: string;
-                    minimum: number;
-                    maximum: number;
-                    description: string;
-                };
-                relativePaths: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                follow: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                threads: {
-                    type: string;
-                    minimum: number;
-                    maximum: number;
-                    description: string;
-                };
-                noIgnore: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                ignorePath: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
-                    description: string;
-                };
-                root: {
-                    type: string;
-                    description: string;
-                };
-                workdir: {
-                    type: string;
+                    default: number;
                     description: string;
                 };
             };

@@ -1,521 +1,166 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
-import { ParameterValidator } from '../core/validator.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
-import { ValidationError, ExecutionError, SecurityError } from '../types/errors.js';
-import { ReplaceParams, ReplaceResult } from '../types/schemas.js';
+import { ValidationError, ExecutionError } from '../types/errors.js';
 
 /**
- * Performs ast-grep replacements and writes changes within the workspace.
+ * Direct replace tool that calls ast-grep run --rewrite with minimal overhead
  */
 export class ReplaceTool {
-  private binaryManager: AstGrepBinaryManager;
-  private validator: ParameterValidator;
-  private workspaceManager: WorkspaceManager;
-
-  /**
-   * Initialize the tool with binary execution and workspace services.
-   */
   constructor(
-    binaryManager: AstGrepBinaryManager,
-    workspaceManager: WorkspaceManager
-  ) {
-    this.binaryManager = binaryManager;
-    this.workspaceManager = workspaceManager;
-    this.validator = new ParameterValidator(workspaceManager.getWorkspaceRoot());
-  }
+    private binaryManager: AstGrepBinaryManager,
+    private workspaceManager: WorkspaceManager
+  ) {}
 
-  /**
-   * Run ast-grep replace with validated parameters and return change metadata.
-   */
-  async execute(params: ReplaceParams): Promise<ReplaceResult> {
-    // Validate parameters
-    const validation = this.validator.validateReplaceParams(params);
-    if (!validation.valid) {
-      throw new ValidationError('Invalid replace parameters', {
-        errors: validation.errors,
-        params
-      });
+  async execute(params: any): Promise<any> {
+    // Basic validation - only what's absolutely necessary
+    if (!params.pattern || typeof params.pattern !== 'string') {
+      throw new ValidationError('Pattern is required');
+    }
+    if (!params.replacement) {
+      throw new ValidationError('Replacement is required');
     }
 
-    const sanitizedParams = validation.sanitized as ReplaceParams;
+    // Build ast-grep command directly
+    const args = ['run', '--pattern', params.pattern.trim(), '--rewrite', params.replacement];
 
-    // Skip resource and path validation for inline code searches
-    let pathValidation: any = { valid: true, resolvedPaths: [] };
-    
-    if (!sanitizedParams.code) {
-      // Only validate resources and paths for file-based searches
-      const resourceValidation = await this.validator.validateResourceLimits(sanitizedParams.paths || ['.']);
-      if (!resourceValidation.valid) {
-        throw new ValidationError('Resource limits exceeded', {
-          errors: resourceValidation.errors,
-          params: sanitizedParams
-        });
-      }
-
-      // Validate paths
-      pathValidation = this.workspaceManager.validatePaths(sanitizedParams.paths || ['.']);
-      if (!pathValidation.valid) {
-        throw new ValidationError('Invalid paths', {
-          errors: pathValidation.errors,
-          params: sanitizedParams
-        });
-      }
-    }
-
-    // For non-dry-run operations, create backups
-    if (!sanitizedParams.dryRun) {
-      await this.createBackups(pathValidation.resolvedPaths);
-    }
-
-    // Validate metavariable consistency between pattern and replacement
-    const metavarValidation = this.validateMetavariableConsistency(sanitizedParams.pattern, sanitizedParams.replacement);
-    if (!metavarValidation.valid) {
-      throw new ValidationError('Metavariable consistency check failed', {
-        errors: metavarValidation.errors,
-        warnings: metavarValidation.warnings,
-        params: sanitizedParams
-      });
-    }
-
-    try {
-      // Build ast-grep command arguments
-      const args = this.buildReplaceArgs(sanitizedParams, pathValidation.resolvedPaths);
-
-      // Execute ast-grep (stdin if code provided)
-      let result;
-      const timeout = sanitizedParams.dryRun ? (sanitizedParams.timeoutMs ?? 30000) : (sanitizedParams.timeoutMs ?? 60000);
-      if (sanitizedParams.code) {
-        // For stdin mode, language is critical for parsing
-        if (!sanitizedParams.language) {
-          throw new ValidationError('Language must be specified when using inline code', {
-            errors: ['Language parameter is required for stdin mode. Specify language like "python", "javascript", "typescript", etc.'],
-            params: sanitizedParams
-          });
-        }
-        
-        const stdinArgs = [...args, '--stdin'];
-        if (sanitizedParams.stdinFilepath) {
-          stdinArgs.push('--stdin-filepath', sanitizedParams.stdinFilepath);
-        }
-        result = await this.binaryManager.executeAstGrep(stdinArgs, {
-          cwd: this.workspaceManager.getWorkspaceRoot(),
-          timeout,
-          stdin: sanitizedParams.code
-        });
-      } else {
-        result = await this.binaryManager.executeAstGrep(args, {
-          cwd: this.workspaceManager.getWorkspaceRoot(),
-          timeout
-        });
-      }
-
-      // Parse results
-      const changes = this.parseReplaceResults(result.stdout, sanitizedParams);
-
-      return {
-        changes,
-        summary: {
-          totalChanges: changes.reduce((sum, change) => sum + change.matches, 0),
-          filesModified: changes.filter(change => change.applied).length,
-          dryRun: sanitizedParams.dryRun
-        }
-      };
-
-    } catch (error) {
-      if (error instanceof ValidationError) {
-        throw error;
-      }
-
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      // Try to translate ast-grep errors to user-friendly messages
-      const friendlyMessage = this.validator.translateAstGrepError(errorMessage);
-
-      throw new ExecutionError(
-        `Replace execution failed: ${friendlyMessage}`,
-        { params: sanitizedParams, originalError: error }
-      );
-    }
-  }
-
-  private async createBackups(paths: string[]): Promise<void> {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupDir = path.join(this.workspaceManager.getWorkspaceRoot(), '.ast-grep-backups', timestamp);
-
-    try {
-      await fs.mkdir(backupDir, { recursive: true });
-
-      for (const filePath of paths) {
-        const stats = await fs.stat(filePath);
-        if (stats.isFile()) {
-          const relativePath = path.relative(this.workspaceManager.getWorkspaceRoot(), filePath);
-          const backupPath = path.join(backupDir, relativePath);
-          await fs.mkdir(path.dirname(backupPath), { recursive: true });
-          await fs.copyFile(filePath, backupPath);
-        }
-      }
-    } catch (error) {
-      // Log warning but don't fail the operation
-      console.warn('Failed to create backups:', error);
-    }
-  }
-
-  private buildReplaceArgs(params: ReplaceParams, resolvedPaths: string[]): string[] {
-    const args: string[] = ['run'];
-
-    // Add pattern (required)
-    args.push('--pattern', params.pattern);
-
-    // Add replacement
-    args.push('--rewrite', params.replacement);
-
-    // Add language filter if specified
+    // Add language if provided
     if (params.language) {
       args.push('--lang', params.language);
     }
 
-    // Add include patterns using globs
-    if (params.include && params.include.length > 0) {
-      for (const pattern of params.include) {
-        args.push('--globs', pattern);
-      }
-    }
-
-    // Add exclude patterns
-    if (params.exclude && params.exclude.length > 0) {
-      for (const pattern of params.exclude) {
-        args.push('--globs', `!${pattern}`);
-      }
-    }
-
-    // Respect ignore settings
-    if (params.noIgnore) {
-      // ast-grep requires specific values for --no-ignore
-      args.push('--no-ignore', 'hidden');
-      args.push('--no-ignore', 'dot');
-      args.push('--no-ignore', 'vcs');
-    }
-    if (params.ignorePath && params.ignorePath.length > 0) {
-      for (const ig of params.ignorePath) {
-        args.push('--ignore-path', ig);
-      }
-    }
-
-    // Root/workdir controls
-    if (params.root) {
-      args.push('--root', params.root);
-    }
-    if (params.workdir) {
-      args.push('--workdir', params.workdir);
-    }
-
-    // Note: ast-grep rewrite doesn't support --json, outputs diff format
-
-    // Follow symlinks
-    if (params.follow) {
-      args.push('--follow');
-    }
-
-    // Threads
-    if (params.threads) {
-      args.push('--threads', String(params.threads));
-    }
-
-    // Interactive vs update-all
-    if (params.interactive && !params.dryRun) {
-      args.push('--interactive');
-    } else if (!params.dryRun) {
+    // Handle dry-run vs actual replacement
+    if (!params.dryRun) {
       args.push('--update-all');
     }
+    // Note: ast-grep run --rewrite outputs diff format by default (perfect for dry-run)
 
-    // Add paths when not using stdin
-    if (!params.code) {
-      args.push(...resolvedPaths);
+    // Handle inline code vs file paths
+    let executeOptions: any = {
+      cwd: this.workspaceManager.getWorkspaceRoot(),
+      timeout: params.timeoutMs || 60000
+    };
+
+    if (params.code) {
+      // Inline code mode
+      args.push('--stdin');
+      if (!params.language) {
+        throw new ValidationError('Language required for inline code');
+      }
+      executeOptions.stdin = params.code;
+    } else {
+      // File mode - add paths (default to current directory)
+      const paths = params.paths || ['.'];
+      args.push(...paths);
     }
 
-    return args;
+    try {
+      const result = await this.binaryManager.executeAstGrep(args, executeOptions);
+      return this.parseResults(result.stdout, params);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ExecutionError(`Replace failed: ${message}`);
+    }
   }
 
-  private parseReplaceResults(stdout: string, params: ReplaceParams): ReplaceResult['changes'] {
-    const changes: ReplaceResult['changes'] = [];
-    const workspaceRoot = this.workspaceManager.getWorkspaceRoot();
+  private parseResults(stdout: string, params: any): any {
+    const changes: any[] = [];
 
     if (!stdout.trim()) {
-      return changes;
-    }
-
-    // ast-grep rewrite outputs diff format, not JSON
-    // Example output:
-    // STDIN
-    // @@ -0,1 +0,1 @@
-    // 1  │-console.log("test");
-    //   1│+logger.info("test");
-    
-    try {
-      const diffBlocks = this.parseDiffOutput(stdout);
-      
-      for (const block of diffBlocks) {
-        let filePath = block.file;
-        
-        // Handle relative paths
-        if (params.relativePaths && filePath && filePath !== 'STDIN') {
-          try {
-            const abs = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
-            const rel = path.relative(workspaceRoot, abs) || filePath;
-            filePath = rel.replace(/\\/g, '/');
-          } catch {}
+      return {
+        changes,
+        summary: {
+          totalChanges: 0,
+          filesModified: 0,
+          dryRun: params.dryRun !== false
         }
-        
-        changes.push({
-          file: filePath,
-          matches: block.changeCount,
-          preview: params.dryRun ? block.diff : undefined,
-          applied: !params.dryRun,
-          captures: undefined // Diff format doesn't provide capture info
-        });
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to parse diff output:', errorMessage);
-      console.error('Raw output:', stdout);
-      
-      // Fallback: if there's any output, assume there was at least one change
-      if (stdout.trim()) {
-        changes.push({
-          file: params.code ? 'STDIN' : 'unknown',
-          matches: 1,
-          preview: params.dryRun ? stdout.trim() : undefined,
-          applied: !params.dryRun
-        });
-      }
+      };
     }
 
-    return changes;
-  }
-
-  private parseDiffOutput(output: string): Array<{file: string, diff: string, changeCount: number}> {
-    const blocks: Array<{file: string, diff: string, changeCount: number}> = [];
-    const lines = output.split('\n');
-    
+    // Parse diff output - very simple approach
+    const lines = stdout.split('\n');
     let currentFile = '';
-    let currentDiff = '';
     let changeCount = 0;
-    let inDiffBlock = false;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      
-      // Detect file header (file path on its own line, not starting with diff markers)
-      if (!line.startsWith('@@') && !line.startsWith(' ') && !line.includes('│') && 
-          line.trim() && !line.startsWith('Warning:') && !line.startsWith('Help:') &&
-          !line.startsWith('error:') && !inDiffBlock) {
-        
-        // If we were processing a previous file, save it
-        if (currentFile && (currentDiff || changeCount > 0)) {
-          blocks.push({
+    let diffContent = '';
+
+    for (const line of lines) {
+      if (line && !line.startsWith('@@') && !line.includes('│') && !line.startsWith(' ')) {
+        // Looks like a file header
+        if (currentFile && changeCount > 0) {
+          changes.push({
             file: currentFile,
-            diff: currentDiff.trim(),
-            changeCount: changeCount
+            matches: changeCount,
+            preview: params.dryRun !== false ? diffContent : undefined,
+            applied: params.dryRun === false
           });
         }
-        
-        // Start new file
         currentFile = line.trim();
-        currentDiff = line + '\n';
         changeCount = 0;
-        inDiffBlock = false;
-      }
-      // Detect diff header (@@ lines)
-      else if (line.startsWith('@@')) {
-        inDiffBlock = true;
-        currentDiff += line + '\n';
-      }
-      // Count actual changes (lines with │ that show additions/deletions)
-      else if (line.includes('│') && inDiffBlock) {
-        const hasChange = line.includes('│-') || line.includes('│+');
-        if (hasChange) {
-          // Count each - or + as a change (replacements show as both - and +)
-          if (line.includes('│-')) changeCount++;
-        }
-        currentDiff += line + '\n';
-      }
-      // Include other content if we're in a file context
-      else if (currentFile) {
-        currentDiff += line + '\n';
+        diffContent = line + '\n';
+      } else if (line.includes('│-') || line.includes('│+')) {
+        if (line.includes('│-')) changeCount++;
+        diffContent += line + '\n';
+      } else {
+        diffContent += line + '\n';
       }
     }
-    
-    // Don't forget the last block
-    if (currentFile && (currentDiff || changeCount > 0)) {
-      blocks.push({
+
+    // Don't forget the last file
+    if (currentFile && (changeCount > 0 || diffContent.trim())) {
+      changes.push({
         file: currentFile,
-        diff: currentDiff.trim(),
-        changeCount: Math.max(changeCount, 1) // At least 1 if we have a diff
+        matches: Math.max(changeCount, 1),
+        preview: params.dryRun !== false ? diffContent : undefined,
+        applied: params.dryRun === false
       });
     }
-    
-    return blocks;
+
+    return {
+      changes,
+      summary: {
+        totalChanges: changes.reduce((sum, c) => sum + c.matches, 0),
+        filesModified: changes.length,
+        dryRun: params.dryRun !== false
+      }
+    };
   }
 
-  /**
-   * Validate that metavariables in replacement match those captured in pattern.
-   */
-  private validateMetavariableConsistency(pattern: string, replacement: string): { valid: boolean, errors: string[], warnings: string[] } {
-    const result: { valid: boolean, errors: string[], warnings: string[] } = { valid: true, errors: [], warnings: [] };
-
-    // Extract metavariables from pattern and replacement
-    const patternSingle = [...pattern.matchAll(/\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
-    const patternMulti = [...pattern.matchAll(/\$\$\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
-    const patternBare = (pattern.match(/\$\$\$(?![A-Z_])/g) || []).length > 0;
-    
-    const replacementSingle = [...replacement.matchAll(/\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
-    const replacementMulti = [...replacement.matchAll(/\$\$\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
-    const replacementBare = (replacement.match(/\$\$\$(?![A-Z_])/g) || []).length > 0;
-    
-    const allPatternVars = [...new Set([...patternSingle, ...patternMulti])];
-    const allReplacementVars = [...new Set([...replacementSingle, ...replacementMulti])];
-    
-    // Check for bare $$$ in replacement
-    if (replacementBare) {
-      if (patternBare) {
-        result.warnings.push('Using bare $$$ in both pattern and replacement. Consider using named metavariables for clarity.');
-      } else if (patternMulti.length > 0) {
-        result.errors.push(`Replacement uses bare $$$ but pattern has named multi-metavariables: ${patternMulti.map(v => '$$$' + v).join(', ')}. Use matching named metavariable in replacement.`);
-        result.valid = false;
-      } else {
-        result.errors.push('Replacement uses bare $$$ but pattern has no multi-metavariables. Remove $$$ or add matching pattern.');
-        result.valid = false;
-      }
-    }
-    
-    // Check that all replacement metavariables exist in pattern
-    const undefinedVars = allReplacementVars.filter(rv => !allPatternVars.includes(rv) && rv !== '_');
-    if (undefinedVars.length > 0) {
-      result.valid = false;
-      result.errors.push(`Replacement uses undefined metavariables: ${undefinedVars.map(v => '$' + v).join(', ')}. Available from pattern: ${allPatternVars.map(v => '$' + v).join(', ')}`);
-    }
-    
-    // Warn about unused pattern variables (except _)
-    const unusedVars = allPatternVars.filter(pv => !allReplacementVars.includes(pv) && pv !== '_');
-    if (unusedVars.length > 0) {
-      result.warnings.push(`Pattern captures unused metavariables: ${unusedVars.map(v => '$' + v).join(', ')}. Consider using them in replacement or remove from pattern.`);
-    }
-    
-    // Check for mismatched multi-metavariable types
-    for (const multiVar of replacementMulti) {
-      if (patternSingle.includes(multiVar)) {
-        result.errors.push(`Replacement uses $$$${multiVar} but pattern captures it as single metavariable $${multiVar}. Use $${multiVar} in replacement.`);
-        result.valid = false;
-      }
-    }
-    
-    for (const singleVar of replacementSingle) {
-      if (patternMulti.includes(singleVar)) {
-        result.errors.push(`Replacement uses $${singleVar} but pattern captures it as multi-metavariable $$$${singleVar}. Use $$$${singleVar} in replacement.`);
-        result.valid = false;
-      }
-    }
-    
-    return result;
-  }
-
-  // Get tool schema for MCP
-  /**
-   * Describe the MCP schema for the replace tool.
-   */
   static getSchema() {
     return {
       name: 'ast_replace',
-      description: 'Perform structural find-and-replace operations using AST patterns. Supports simple text replacement, metavariable capture, and multi-node patterns. BEST PRACTICE: Use "code" parameter for inline replacement (most reliable) or absolute paths for file-based replacement. ⚠️ CRITICAL LIMITATIONS: $_  metavariables lose arguments during substitution, $$$ metavariables show literal "$$$" instead of actual content. RELIABLE: Use named metavariables like $NAME, $FUNC, $ARG for consistent results.',
+      description: '🚀 SIMPLIFIED: Direct ast-grep replace with minimal overhead. All metavariables work: $NAME, $$$, etc.',
       inputSchema: {
         type: 'object',
         properties: {
           pattern: {
             type: 'string',
-            description: 'AST pattern to match using ast-grep syntax. ✅ PROVEN CATALOG PATTERNS - JavaScript: "console.log($ARG)" → "logger.info($ARG)", "function $NAME($PARAMS) { $BODY }" → "const $NAME = ($PARAMS) => { $BODY }", "var $NAME" → "let $NAME". Python: "def $NAME($PARAMS): $BODY" → "async def $NAME($PARAMS): $BODY". Java: "public $TYPE $METHOD($PARAMS) { $BODY }" → "private $TYPE $METHOD($PARAMS) { $BODY }". ✅ RELIABLE METAVARIABLES: $NAME, $FUNC, $ARG, $PARAMS, $BODY work in both search & replace. ❌ UNRELIABLE: $_ loses content, $$$ shows literal "$$$" in replacement.'
+            description: 'AST pattern: console.log($ARG), function $NAME($PARAMS) { $$$ }, etc.'
           },
           replacement: {
             type: 'string',
-            description: 'Replacement template using same metavariables as pattern. ✅ PROVEN CATALOG REPLACEMENTS: "logger.info($ARG)" (console.log migration), "const $NAME = ($PARAMS) => { $BODY }" (arrow function conversion), "async def $NAME($PARAMS): $BODY" (Python async migration), "private $TYPE $METHOD($PARAMS) { $BODY }" (Java visibility change). ✅ RELIABLE PATTERN: Use named metavariables ($NAME, $ARG, $PARAMS, $BODY) that match exactly what the pattern captures. ❌ CRITICAL: Never use $_ or $$$ in replacement templates - they will fail or show literal text.'
+            description: 'Replacement template using same metavariables: logger.info($ARG), const $NAME = ($PARAMS) => { $$$ }, etc.'
           },
           code: {
             type: 'string',
-            description: 'RECOMMENDED: Apply replacement on inline code instead of files. Most reliable method. Example: "console.log(\'test\'); const x = 5;" - will process this code directly and return diff preview.'
+            description: 'Apply replacement to inline code (recommended for testing)'
           },
           paths: {
             type: 'array',
             items: { type: 'string' },
-            description: '⚠️ PATH REQUIREMENTS: REQUIRED: Use absolute paths for file operations (e.g., "D:\\path\\to\\file.js"). ❌ FAILS: Relative paths like "src/file.ts" may not resolve correctly due to workspace detection issues. ✅ WORKS: Absolute paths like "d:/project/src/file.ts" for reliable file resolution.'
+            description: 'File paths to modify (default: current directory)'
           },
           language: {
             type: 'string',
-            description: 'Programming language for pattern matching. Required when using "code" parameter. Common values: "javascript", "typescript", "python", "java", "rust", "go", "cpp". Auto-detected from file extensions if not specified.'
+            description: 'Language: javascript, typescript, python, java, etc.'
           },
           dryRun: {
             type: 'boolean',
             default: true,
-            description: 'Preview changes without applying them. Shows diff output of what would be changed. Set to false to actually apply changes to files.'
-          },
-          interactive: {
-            type: 'boolean',
-            default: false,
-            description: 'INTERACTIVE MODE: When true (and dryRun=false), ast-grep will prompt for confirmation before each replacement. Allows selective application of changes. Only works with actual replacements, not previews.'
-          },
-          include: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Include glob patterns for file filtering. Example: ["**/*.js", "**/*.ts"] to only process JavaScript/TypeScript files.'
-          },
-          exclude: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Exclude glob patterns. Default excludes: node_modules, .git, dist, build, coverage, *.min.js, *.bundle.js, .next, .vscode, .idea'
+            description: 'Show preview without making changes'
           },
           timeoutMs: {
             type: 'number',
-            minimum: 1000,
-            maximum: 180000,
-            description: 'Timeout for ast-grep execution in milliseconds. Default: 30000 (30s) for dry-run, 60000 (60s) for actual replacements.'
-          },
-          relativePaths: {
-            type: 'boolean',
-            default: false,
-            description: 'Return file paths relative to workspace root instead of absolute paths'
-          },
-          follow: {
-            type: 'boolean',
-            default: false,
-            description: 'Follow symlinks during file processing'
-          },
-          threads: {
-            type: 'number',
-            minimum: 1,
-            maximum: 64,
-            description: 'Number of threads to use for parallel processing (default: auto)'
-          },
-          noIgnore: {
-            type: 'boolean',
-            default: false,
-            description: 'Disable ignore rules and process all files including node_modules, .git, etc. Use with caution as it may process large amounts of files.'
-          },
-          ignorePath: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Additional ignore file(s) to respect beyond default .gitignore patterns'
-          },
-          root: {
-            type: 'string',
-            description: 'Override project root used by ast-grep. Note: ast-grep run command does not support --root flag, this parameter may not work as expected.'
-          },
-          workdir: {
-            type: 'string',
-            description: 'Working directory for ast-grep. Note: ast-grep run command does not support --workdir flag, this parameter may not work as expected.'
-          },
-          stdinFilepath: {
-            type: 'string',
-            description: 'Virtual filepath for stdin content when using "code" parameter, used for language/ignore resolution'
+            default: 60000,
+            description: 'Timeout in milliseconds'
           }
         },
         required: ['pattern', 'replacement']
@@ -523,4 +168,3 @@ export class ReplaceTool {
     };
   }
 }
-

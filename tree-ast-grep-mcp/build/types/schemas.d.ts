@@ -45,13 +45,13 @@ export declare const SearchParamsSchema: z.ZodObject<{
     pattern: string;
     context: number;
     maxMatches: number;
-    root?: string | undefined;
+    language?: string | undefined;
     code?: string | undefined;
     paths?: string[] | undefined;
-    language?: string | undefined;
+    timeoutMs?: number | undefined;
+    root?: string | undefined;
     include?: string[] | undefined;
     exclude?: string[] | undefined;
-    timeoutMs?: number | undefined;
     relativePaths?: boolean | undefined;
     perFileMatchLimit?: number | undefined;
     noIgnore?: boolean | undefined;
@@ -63,15 +63,15 @@ export declare const SearchParamsSchema: z.ZodObject<{
     threads?: number | undefined;
 }, {
     pattern: string;
-    root?: string | undefined;
+    language?: string | undefined;
     code?: string | undefined;
     paths?: string[] | undefined;
-    language?: string | undefined;
     context?: number | undefined;
-    include?: string[] | undefined;
-    exclude?: string[] | undefined;
     maxMatches?: number | undefined;
     timeoutMs?: number | undefined;
+    root?: string | undefined;
+    include?: string[] | undefined;
+    exclude?: string[] | undefined;
     relativePaths?: boolean | undefined;
     perFileMatchLimit?: number | undefined;
     noIgnore?: boolean | undefined;
@@ -111,13 +111,13 @@ export declare const ReplaceParamsSchema: z.ZodObject<{
     replacement: string;
     dryRun: boolean;
     interactive: boolean;
-    root?: string | undefined;
+    language?: string | undefined;
     code?: string | undefined;
     paths?: string[] | undefined;
-    language?: string | undefined;
+    timeoutMs?: number | undefined;
+    root?: string | undefined;
     include?: string[] | undefined;
     exclude?: string[] | undefined;
-    timeoutMs?: number | undefined;
     relativePaths?: boolean | undefined;
     noIgnore?: boolean | undefined;
     ignorePath?: string[] | undefined;
@@ -129,13 +129,14 @@ export declare const ReplaceParamsSchema: z.ZodObject<{
 }, {
     pattern: string;
     replacement: string;
-    root?: string | undefined;
+    language?: string | undefined;
     code?: string | undefined;
     paths?: string[] | undefined;
-    language?: string | undefined;
+    timeoutMs?: number | undefined;
+    dryRun?: boolean | undefined;
+    root?: string | undefined;
     include?: string[] | undefined;
     exclude?: string[] | undefined;
-    timeoutMs?: number | undefined;
     relativePaths?: boolean | undefined;
     noIgnore?: boolean | undefined;
     ignorePath?: string[] | undefined;
@@ -144,7 +145,6 @@ export declare const ReplaceParamsSchema: z.ZodObject<{
     jsonStyle?: "stream" | "pretty" | "compact" | undefined;
     follow?: boolean | undefined;
     threads?: number | undefined;
-    dryRun?: boolean | undefined;
     interactive?: boolean | undefined;
 }>;
 export type ReplaceParams = z.infer<typeof ReplaceParamsSchema>;
@@ -159,12 +159,12 @@ export declare const RewriteParamsSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     dryRun: boolean;
     rules: string;
-    paths?: string[] | undefined;
     language?: string | undefined;
+    paths?: string[] | undefined;
 }, {
     rules: string;
-    paths?: string[] | undefined;
     language?: string | undefined;
+    paths?: string[] | undefined;
     dryRun?: boolean | undefined;
 }>;
 export type RewriteParams = z.infer<typeof RewriteParamsSchema>;
@@ -198,20 +198,21 @@ export declare const SearchMatchSchema: z.ZodObject<{
         endColumn: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }, {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }>, "many">>;
 }, "strip", z.ZodTypeAny, {
+    text: string;
     context: {
         before: string[];
         after: string[];
@@ -219,19 +220,19 @@ export declare const SearchMatchSchema: z.ZodObject<{
     file: string;
     line: number;
     column: number;
-    text: string;
     matchedNode: string;
     endLine?: number | undefined;
     endColumn?: number | undefined;
     captures?: {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }[] | undefined;
 }, {
+    text: string;
     context: {
         before: string[];
         after: string[];
@@ -239,15 +240,14 @@ export declare const SearchMatchSchema: z.ZodObject<{
     file: string;
     line: number;
     column: number;
-    text: string;
     matchedNode: string;
     endLine?: number | undefined;
     endColumn?: number | undefined;
     captures?: {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }[] | undefined;
@@ -280,20 +280,21 @@ export declare const SearchResultSchema: z.ZodObject<{
             endColumn: z.ZodOptional<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }, {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }>, "many">>;
     }, "strip", z.ZodTypeAny, {
+        text: string;
         context: {
             before: string[];
             after: string[];
@@ -301,19 +302,19 @@ export declare const SearchResultSchema: z.ZodObject<{
         file: string;
         line: number;
         column: number;
-        text: string;
         matchedNode: string;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
     }, {
+        text: string;
         context: {
             before: string[];
             after: string[];
@@ -321,15 +322,14 @@ export declare const SearchResultSchema: z.ZodObject<{
         file: string;
         line: number;
         column: number;
-        text: string;
         matchedNode: string;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -352,6 +352,7 @@ export declare const SearchResultSchema: z.ZodObject<{
     }>;
 }, "strip", z.ZodTypeAny, {
     matches: {
+        text: string;
         context: {
             before: string[];
             after: string[];
@@ -359,15 +360,14 @@ export declare const SearchResultSchema: z.ZodObject<{
         file: string;
         line: number;
         column: number;
-        text: string;
         matchedNode: string;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -380,6 +380,7 @@ export declare const SearchResultSchema: z.ZodObject<{
     };
 }, {
     matches: {
+        text: string;
         context: {
             before: string[];
             after: string[];
@@ -387,15 +388,14 @@ export declare const SearchResultSchema: z.ZodObject<{
         file: string;
         line: number;
         column: number;
-        text: string;
         matchedNode: string;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -425,16 +425,16 @@ export declare const ReplaceChangeSchema: z.ZodObject<{
         endColumn: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }, {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }>, "many">>;
@@ -444,9 +444,9 @@ export declare const ReplaceChangeSchema: z.ZodObject<{
     applied: boolean;
     captures?: {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }[] | undefined;
@@ -457,9 +457,9 @@ export declare const ReplaceChangeSchema: z.ZodObject<{
     applied: boolean;
     captures?: {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }[] | undefined;
@@ -480,16 +480,16 @@ export declare const ReplaceResultSchema: z.ZodObject<{
             endColumn: z.ZodOptional<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }, {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }>, "many">>;
@@ -499,9 +499,9 @@ export declare const ReplaceResultSchema: z.ZodObject<{
         applied: boolean;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -512,9 +512,9 @@ export declare const ReplaceResultSchema: z.ZodObject<{
         applied: boolean;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -545,9 +545,9 @@ export declare const ReplaceResultSchema: z.ZodObject<{
         applied: boolean;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -565,9 +565,9 @@ export declare const ReplaceResultSchema: z.ZodObject<{
         applied: boolean;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
@@ -597,55 +597,55 @@ export declare const ScanFindingSchema: z.ZodObject<{
         endColumn: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }, {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }>, "many">>;
 }, "strip", z.ZodTypeAny, {
     message: string;
+    severity: string;
     file: string;
     line: number;
     column: number;
     ruleId: string;
-    severity: string;
+    fix?: string | undefined;
     endLine?: number | undefined;
     endColumn?: number | undefined;
     captures?: {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }[] | undefined;
-    fix?: string | undefined;
 }, {
     message: string;
+    severity: string;
     file: string;
     line: number;
     column: number;
     ruleId: string;
-    severity: string;
+    fix?: string | undefined;
     endLine?: number | undefined;
     endColumn?: number | undefined;
     captures?: {
         name: string;
+        text?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
-        text?: string | undefined;
         startLine?: number | undefined;
         startColumn?: number | undefined;
     }[] | undefined;
-    fix?: string | undefined;
 }>;
 export declare const ScanResultSchema: z.ZodObject<{
     findings: z.ZodArray<z.ZodObject<{
@@ -667,55 +667,55 @@ export declare const ScanResultSchema: z.ZodObject<{
             endColumn: z.ZodOptional<z.ZodNumber>;
         }, "strip", z.ZodTypeAny, {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }, {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }>, "many">>;
     }, "strip", z.ZodTypeAny, {
         message: string;
+        severity: string;
         file: string;
         line: number;
         column: number;
         ruleId: string;
-        severity: string;
+        fix?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
-        fix?: string | undefined;
     }, {
         message: string;
+        severity: string;
         file: string;
         line: number;
         column: number;
         ruleId: string;
-        severity: string;
+        fix?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
-        fix?: string | undefined;
     }>, "many">;
     summary: z.ZodObject<{
         totalFindings: z.ZodNumber;
@@ -742,22 +742,22 @@ export declare const ScanResultSchema: z.ZodObject<{
     };
     findings: {
         message: string;
+        severity: string;
         file: string;
         line: number;
         column: number;
         ruleId: string;
-        severity: string;
+        fix?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
-        fix?: string | undefined;
     }[];
 }, {
     summary: {
@@ -768,22 +768,22 @@ export declare const ScanResultSchema: z.ZodObject<{
     };
     findings: {
         message: string;
+        severity: string;
         file: string;
         line: number;
         column: number;
         ruleId: string;
-        severity: string;
+        fix?: string | undefined;
         endLine?: number | undefined;
         endColumn?: number | undefined;
         captures?: {
             name: string;
+            text?: string | undefined;
             endLine?: number | undefined;
             endColumn?: number | undefined;
-            text?: string | undefined;
             startLine?: number | undefined;
             startColumn?: number | undefined;
         }[] | undefined;
-        fix?: string | undefined;
     }[];
 }>;
 export type ScanResult = z.infer<typeof ScanResultSchema>;
@@ -841,15 +841,10 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
     fix: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     pattern: string;
-    language: string;
     id: string;
+    language: string;
     message?: string | undefined;
     severity?: "error" | "warning" | "info" | undefined;
-    fix?: string | undefined;
-    kind?: string | undefined;
-    insidePattern?: string | undefined;
-    hasPattern?: string | undefined;
-    notPattern?: string | undefined;
     where?: {
         metavariable: string;
         includes?: string | undefined;
@@ -857,17 +852,17 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    fix?: string | undefined;
+    kind?: string | undefined;
+    insidePattern?: string | undefined;
+    hasPattern?: string | undefined;
+    notPattern?: string | undefined;
 }, {
     pattern: string;
-    language: string;
     id: string;
+    language: string;
     message?: string | undefined;
     severity?: "error" | "warning" | "info" | undefined;
-    fix?: string | undefined;
-    kind?: string | undefined;
-    insidePattern?: string | undefined;
-    hasPattern?: string | undefined;
-    notPattern?: string | undefined;
     where?: {
         metavariable: string;
         includes?: string | undefined;
@@ -875,17 +870,22 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    fix?: string | undefined;
+    kind?: string | undefined;
+    insidePattern?: string | undefined;
+    hasPattern?: string | undefined;
+    notPattern?: string | undefined;
 }>;
 export type RuleBuilderParams = z.infer<typeof RuleBuilderParamsSchema>;
 export declare const RuleBuilderResultSchema: z.ZodObject<{
     yaml: z.ZodString;
     summary: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    summary: string;
     yaml: string;
+    summary: string;
 }, {
-    summary: string;
     yaml: string;
+    summary: string;
 }>;
 export type RuleBuilderResult = z.infer<typeof RuleBuilderResultSchema>;
 /**
@@ -939,27 +939,12 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
     saveTo: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     pattern: string;
-    language: string;
     id: string;
-    root?: string | undefined;
+    language: string;
     message?: string | undefined;
     paths?: string[] | undefined;
-    include?: string[] | undefined;
-    exclude?: string[] | undefined;
     timeoutMs?: number | undefined;
-    relativePaths?: boolean | undefined;
-    noIgnore?: boolean | undefined;
-    ignorePath?: string[] | undefined;
-    workdir?: string | undefined;
-    jsonStyle?: "stream" | "pretty" | "compact" | undefined;
-    follow?: boolean | undefined;
-    threads?: number | undefined;
     severity?: "error" | "warning" | "info" | "all" | undefined;
-    fix?: string | undefined;
-    kind?: string | undefined;
-    insidePattern?: string | undefined;
-    hasPattern?: string | undefined;
-    notPattern?: string | undefined;
     where?: {
         metavariable: string;
         includes?: string | undefined;
@@ -967,32 +952,32 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    fix?: string | undefined;
+    root?: string | undefined;
+    include?: string[] | undefined;
+    exclude?: string[] | undefined;
+    relativePaths?: boolean | undefined;
+    noIgnore?: boolean | undefined;
+    ignorePath?: string[] | undefined;
+    workdir?: string | undefined;
+    jsonStyle?: "stream" | "pretty" | "compact" | undefined;
+    follow?: boolean | undefined;
+    threads?: number | undefined;
+    kind?: string | undefined;
+    insidePattern?: string | undefined;
+    hasPattern?: string | undefined;
+    notPattern?: string | undefined;
     format?: "text" | "json" | "github" | undefined;
     ruleIds?: string[] | undefined;
     saveTo?: string | undefined;
 }, {
     pattern: string;
-    language: string;
     id: string;
-    root?: string | undefined;
+    language: string;
     message?: string | undefined;
     paths?: string[] | undefined;
-    include?: string[] | undefined;
-    exclude?: string[] | undefined;
     timeoutMs?: number | undefined;
-    relativePaths?: boolean | undefined;
-    noIgnore?: boolean | undefined;
-    ignorePath?: string[] | undefined;
-    workdir?: string | undefined;
-    jsonStyle?: "stream" | "pretty" | "compact" | undefined;
-    follow?: boolean | undefined;
-    threads?: number | undefined;
     severity?: "error" | "warning" | "info" | "all" | undefined;
-    fix?: string | undefined;
-    kind?: string | undefined;
-    insidePattern?: string | undefined;
-    hasPattern?: string | undefined;
-    notPattern?: string | undefined;
     where?: {
         metavariable: string;
         includes?: string | undefined;
@@ -1000,6 +985,21 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    fix?: string | undefined;
+    root?: string | undefined;
+    include?: string[] | undefined;
+    exclude?: string[] | undefined;
+    relativePaths?: boolean | undefined;
+    noIgnore?: boolean | undefined;
+    ignorePath?: string[] | undefined;
+    workdir?: string | undefined;
+    jsonStyle?: "stream" | "pretty" | "compact" | undefined;
+    follow?: boolean | undefined;
+    threads?: number | undefined;
+    kind?: string | undefined;
+    insidePattern?: string | undefined;
+    hasPattern?: string | undefined;
+    notPattern?: string | undefined;
     format?: "text" | "json" | "github" | undefined;
     ruleIds?: string[] | undefined;
     saveTo?: string | undefined;

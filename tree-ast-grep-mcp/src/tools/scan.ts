@@ -1,0 +1,186 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
+import { AstGrepBinaryManager } from '../core/binary-manager.js';
+import { WorkspaceManager } from '../core/workspace-manager.js';
+import { ValidationError, ExecutionError } from '../types/errors.js';
+
+/**
+ * Rule builder that generates YAML and runs ast-grep scan
+ */
+export class ScanTool {
+  constructor(
+    private workspaceManager: WorkspaceManager,
+    private binaryManager: AstGrepBinaryManager
+  ) {}
+
+  async execute(params: any): Promise<any> {
+    // Basic validation
+    if (!params.id || !params.language || !params.pattern) {
+      throw new ValidationError('id, language, and pattern are required');
+    }
+
+    // Generate simple YAML rule
+    const yaml = this.buildYaml(params);
+
+    // Create temporary rule file
+    const tempDir = os.tmpdir();
+    const rulesFile = path.join(tempDir, `rule-${Date.now()}.yml`);
+
+    try {
+      await fs.writeFile(rulesFile, yaml, 'utf8');
+
+      // Build scan command
+      const args = ['scan', '--rule', rulesFile, '--json=stream'];
+
+      // Add paths
+      const paths = params.paths || ['.'];
+      args.push(...paths);
+
+      const result = await this.binaryManager.executeAstGrep(args, {
+        cwd: this.workspaceManager.getWorkspaceRoot(),
+        timeout: params.timeoutMs || 30000
+      });
+
+      const findings = this.parseFindings(result.stdout);
+
+      return {
+        yaml,
+        scan: {
+          findings,
+          summary: {
+            totalFindings: findings.length,
+            errors: findings.filter(f => f.severity === 'error').length,
+            warnings: findings.filter(f => f.severity === 'warning').length
+          }
+        }
+      };
+
+    } finally {
+      // Cleanup
+      try { await fs.unlink(rulesFile); } catch {}
+    }
+  }
+
+  private buildYaml(params: any): string {
+    const lines = [
+      `id: ${params.id}`,
+      `message: ${JSON.stringify(params.message || params.id)}`,
+      `severity: ${params.severity || 'warning'}`,
+      `language: ${params.language}`,
+      'rule:',
+      `  pattern: ${JSON.stringify(params.pattern)}`
+    ];
+
+    // Add simple constraints if provided
+    if (params.where && params.where.length > 0) {
+      lines.push('constraints:');
+      for (const constraint of params.where) {
+        lines.push(`  ${constraint.metavariable}:`);
+        if (constraint.regex) {
+          lines.push(`    regex: ${JSON.stringify(constraint.regex)}`);
+        } else if (constraint.equals) {
+          // Escape and make exact match
+          const escaped = constraint.equals.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          lines.push(`    regex: ${JSON.stringify('^' + escaped + '$')}`);
+        }
+      }
+    }
+
+    // Add fix if provided
+    if (params.fix) {
+      lines.push(`fix: ${JSON.stringify(params.fix)}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  private parseFindings(stdout: string): any[] {
+    const findings: any[] = [];
+
+    if (!stdout.trim()) return findings;
+
+    const lines = stdout.trim().split('\n');
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const finding = JSON.parse(line);
+        findings.push({
+          ruleId: finding.ruleId || 'unknown',
+          severity: finding.severity || 'info',
+          message: finding.message || '',
+          file: finding.file || '',
+          line: (finding.range?.start?.line || 0) + 1, // Convert to 1-based
+          column: finding.range?.start?.column || 0,
+          fix: finding.fix
+        });
+      } catch (e) {
+        // Skip malformed lines
+      }
+    }
+
+    return findings;
+  }
+
+  static getSchema() {
+    return {
+      name: 'ast_run_rule',
+      description: '🚀 SIMPLIFIED: Generate and run ast-grep rules with minimal complexity. Fixed constraints and consistent behavior.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: 'Rule ID (e.g., "no-console-log")'
+          },
+          language: {
+            type: 'string',
+            description: 'Language: javascript, typescript, python, etc.'
+          },
+          pattern: {
+            type: 'string',
+            description: 'AST pattern: console.log($ARG), function $NAME($PARAMS) { $$$ }, etc.'
+          },
+          message: {
+            type: 'string',
+            description: 'Human-readable message for findings'
+          },
+          severity: {
+            type: 'string',
+            enum: ['error', 'warning', 'info'],
+            default: 'warning',
+            description: 'Severity level'
+          },
+          where: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                metavariable: { type: 'string' },
+                regex: { type: 'string' },
+                equals: { type: 'string' }
+              },
+              required: ['metavariable']
+            },
+            description: 'Constraints on metavariables'
+          },
+          fix: {
+            type: 'string',
+            description: 'Optional fix template'
+          },
+          paths: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Paths to scan'
+          },
+          timeoutMs: {
+            type: 'number',
+            default: 30000,
+            description: 'Timeout in milliseconds'
+          }
+        },
+        required: ['id', 'language', 'pattern']
+      }
+    };
+  }
+}

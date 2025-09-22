@@ -1,39 +1,14 @@
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
-import { BaseTool } from '../core/tool-base.js';
-import { SearchParams, SearchResult } from '../types/schemas.js';
 /**
- * Executes ast-grep search operations and formats results for MCP clients.
+ * Direct search tool that calls ast-grep run with minimal overhead
  */
-export declare class SearchTool extends BaseTool {
+export declare class SearchTool {
+    private binaryManager;
+    private workspaceManager;
     constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
-    /**
-     * Run an ast-grep search with validated parameters and return structured matches.
-     */
-    execute(params: SearchParams): Promise<SearchResult>;
-    /**
-     * Convert validated parameters into ast-grep CLI arguments.
-     */
-    private buildSearchArgs;
-    /**
-     * Parse ast-grep JSON output into structured match records.
-     */
-    private parseSearchResults;
-    private processJsonRecord;
-    private parseSingleMatch;
-    /**
-     * Estimate how many files ast-grep processed using stderr hints and match data.
-     */
-    private extractFilesScanned;
-    private countFilesInPaths;
-    private countFilesInDirectory;
-    /**
-     * Extract context lines from a file around a specific line range.
-     */
-    private extractContextLines;
-    /**
-     * Describe the MCP tool schema exposed to clients.
-     */
+    execute(params: any): Promise<any>;
+    private parseResults;
     static getSchema(): {
         name: string;
         description: string;
@@ -61,82 +36,17 @@ export declare class SearchTool extends BaseTool {
                 };
                 context: {
                     type: string;
-                    minimum: number;
-                    maximum: number;
                     default: number;
-                    description: string;
-                };
-                include: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
-                    description: string;
-                };
-                exclude: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
                     description: string;
                 };
                 maxMatches: {
                     type: string;
-                    minimum: number;
-                    maximum: number;
                     default: number;
-                    description: string;
-                };
-                perFileMatchLimit: {
-                    type: string;
-                    minimum: number;
-                    maximum: number;
-                    description: string;
-                };
-                follow: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                threads: {
-                    type: string;
-                    minimum: number;
-                    maximum: number;
                     description: string;
                 };
                 timeoutMs: {
                     type: string;
-                    minimum: number;
-                    maximum: number;
-                    description: string;
-                };
-                relativePaths: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                noIgnore: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                ignorePath: {
-                    type: string;
-                    items: {
-                        type: string;
-                    };
-                    description: string;
-                };
-                root: {
-                    type: string;
-                    description: string;
-                };
-                workdir: {
-                    type: string;
-                    description: string;
-                };
-                stdinFilepath: {
-                    type: string;
+                    default: number;
                     description: string;
                 };
             };
