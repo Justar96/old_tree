@@ -1,15 +1,11 @@
 import * as path from 'path';
 import * as fsSync from 'fs';
-import { ParameterValidator } from '../core/validator.js';
-import { ValidationError, ExecutionError } from '../types/errors.js';
-export class SearchTool {
-    binaryManager;
-    validator;
-    workspaceManager;
+import { BaseTool } from '../core/tool-base.js';
+import { AstGrepErrorTranslator } from '../core/error-handler.js';
+import { ValidationError } from '../types/errors.js';
+export class SearchTool extends BaseTool {
     constructor(binaryManager, workspaceManager) {
-        this.binaryManager = binaryManager;
-        this.workspaceManager = workspaceManager;
-        this.validator = new ParameterValidator(workspaceManager.getWorkspaceRoot());
+        super(workspaceManager, binaryManager);
     }
     async execute(params) {
         const startTime = Date.now();
@@ -22,8 +18,8 @@ export class SearchTool {
             });
         }
         const sanitizedParams = validation.sanitized;
-        // Skip resource and path validation for inline code searches
-        let pathValidation = { valid: true, resolvedPaths: [] };
+        // Handle path resolution for file-based searches
+        let resolvedPaths = [];
         if (!sanitizedParams.code) {
             // Only validate resources and paths for file-based searches
             const resourceValidation = await this.validator.validateResourceLimits(sanitizedParams.paths || ['.']);
@@ -33,18 +29,13 @@ export class SearchTool {
                     params: sanitizedParams
                 });
             }
-            // Validate paths
-            pathValidation = this.workspaceManager.validatePaths(sanitizedParams.paths || ['.']);
-            if (!pathValidation.valid) {
-                throw new ValidationError('Invalid paths', {
-                    errors: pathValidation.errors,
-                    params: sanitizedParams
-                });
-            }
+            // Use enhanced path resolution from BaseTool
+            const pathResolution = await this.resolveAndValidatePaths(sanitizedParams.paths);
+            resolvedPaths = pathResolution.targets;
         }
         try {
             // Build ast-grep command arguments
-            const args = this.buildSearchArgs(sanitizedParams, pathValidation.resolvedPaths);
+            const args = this.buildSearchArgs(sanitizedParams, resolvedPaths);
             // Execute ast-grep (stdin if code provided)
             let result;
             if (sanitizedParams.code) {
@@ -71,8 +62,8 @@ export class SearchTool {
                 });
             }
             // Parse results
-            const matches = this.parseSearchResults(result.stdout, sanitizedParams, this.workspaceManager.getWorkspaceRoot());
-            const filesScanned = this.extractFilesScanned(result.stderr, matches, pathValidation.resolvedPaths);
+            const matches = this.parseSearchResults(result.stdout, sanitizedParams, this.getWorkspaceRoot());
+            const filesScanned = this.extractFilesScanned(result.stderr, matches, resolvedPaths);
             return {
                 matches: matches.slice(0, sanitizedParams.maxMatches),
                 summary: {
@@ -88,67 +79,27 @@ export class SearchTool {
                 throw error;
             }
             const errorMessage = error instanceof Error ? error.message : String(error);
-            // Try to translate ast-grep errors to user-friendly messages
-            const friendlyMessage = this.validator.translateAstGrepError(errorMessage, {
+            // Use enhanced error handling
+            const contextualError = AstGrepErrorTranslator.createUserFriendlyError(error instanceof Error ? error : new Error(errorMessage), {
                 pattern: sanitizedParams.pattern,
                 language: sanitizedParams.language,
-                paths: sanitizedParams.paths
+                paths: sanitizedParams.paths,
+                workspace: this.getWorkspaceRoot()
             });
-            throw new ExecutionError(`Search execution failed: ${friendlyMessage}`, { params: sanitizedParams, originalError: error });
+            throw contextualError;
         }
     }
     buildSearchArgs(params, resolvedPaths) {
         const args = [];
         // Add pattern (required)
         args.push('--pattern', params.pattern);
-        // Add language filter if specified (required for ast-grep)
-        if (params.language) {
-            args.push('--lang', params.language);
-        }
-        // Add context
+        // Use BaseTool methods for consistent parameter handling
+        args.push(...this.buildLanguageArgs(params.language));
+        args.push(...this.buildJsonArgs(params.jsonStyle));
+        args.push(...this.buildCommonArgs(params));
+        // Search-specific parameters
         if (params.context && params.context > 0) {
             args.push('--context', params.context.toString());
-        }
-        // Add include patterns using globs
-        if (params.include && params.include.length > 0) {
-            for (const pattern of params.include) {
-                args.push('--globs', pattern);
-            }
-        }
-        // Add exclude patterns (ast-grep uses --globs with ! prefix for exclusion)
-        if (params.exclude && params.exclude.length > 0) {
-            for (const pattern of params.exclude) {
-                args.push('--globs', `!${pattern}`);
-            }
-        }
-        // Respect ignore settings  
-        if (params.noIgnore) {
-            // ast-grep requires specific values for --no-ignore
-            args.push('--no-ignore', 'hidden');
-            args.push('--no-ignore', 'dot');
-            args.push('--no-ignore', 'vcs');
-        }
-        if (params.ignorePath && params.ignorePath.length > 0) {
-            for (const ig of params.ignorePath) {
-                args.push('--ignore-path', ig);
-            }
-        }
-        // Root/workdir controls (if provided)
-        if (params.root) {
-            args.push('--root', params.root);
-        }
-        if (params.workdir) {
-            args.push('--workdir', params.workdir);
-        }
-        // Add JSON output for parsing
-        args.push(`--json=${params.jsonStyle || 'stream'}`);
-        // Follow symlinks
-        if (params.follow) {
-            args.push('--follow');
-        }
-        // Threads
-        if (params.threads) {
-            args.push('--threads', String(params.threads));
         }
         // Add paths when not using stdin
         if (!params.code) {
@@ -221,17 +172,8 @@ export class SearchTool {
         }
     }
     parseSingleMatch(match, params, workspaceRoot) {
-        let filePath = match.file || '';
-        if (params.relativePaths && filePath) {
-            try {
-                const abs = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
-                const rel = path.relative(workspaceRoot, abs) || filePath;
-                filePath = rel.replace(/\\/g, '/');
-            }
-            catch {
-                // keep original on failure
-            }
-        }
+        // Use BaseTool's consistent path normalization
+        const filePath = this.normalizePath(match.file || '', params.relativePaths);
         // Extract captures if available from ast-grep JSON
         const captures = Array.isArray(match.captures) ? match.captures.map((c) => ({
             name: String(c.name ?? ''),
@@ -241,11 +183,42 @@ export class SearchTool {
             endLine: c.range?.end?.line !== undefined ? Number(c.range.end.line) + 1 : undefined,
             endColumn: c.range?.end?.column !== undefined ? Number(c.range.end.column) : undefined,
         })) : undefined;
+        // Fix line number issues - ensure we never return line 0
+        const startLine = match.range?.start?.line !== undefined ? Number(match.range.start.line) : undefined;
+        const endLine = match.range?.end?.line !== undefined ? Number(match.range.end.line) : undefined;
+        // ast-grep returns 0-based line numbers, convert to 1-based
+        // Handle cases where ast-grep returns invalid line numbers
+        let normalizedLine;
+        if (startLine !== undefined && startLine >= 0) {
+            normalizedLine = startLine + 1;
+        }
+        else if (match.line !== undefined && Number(match.line) > 0) {
+            // Fallback to match.line if range is not available
+            normalizedLine = Number(match.line);
+        }
+        else {
+            // Default to line 1 if no valid line number found
+            normalizedLine = 1;
+        }
+        let normalizedEndLine;
+        if (endLine !== undefined && endLine >= 0) {
+            normalizedEndLine = endLine + 1;
+        }
+        else if (normalizedLine) {
+            // If no end line, assume single line match
+            normalizedEndLine = normalizedLine;
+        }
+        // Ensure line numbers are valid
+        if (normalizedLine < 1)
+            normalizedLine = 1;
+        if (normalizedEndLine !== undefined && normalizedEndLine < normalizedLine) {
+            normalizedEndLine = normalizedLine;
+        }
         return {
             file: filePath,
-            line: match.range?.start?.line !== undefined ? Number(match.range.start.line) + 1 : 0, // ast-grep uses 0-based lines
+            line: normalizedLine,
             column: match.range?.start?.column !== undefined ? Number(match.range.start.column) : 0,
-            endLine: match.range?.end?.line !== undefined ? Number(match.range.end.line) + 1 : undefined,
+            endLine: normalizedEndLine,
             endColumn: match.range?.end?.column !== undefined ? Number(match.range.end.column) : undefined,
             text: match.text || match.lines || '',
             context: {

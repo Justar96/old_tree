@@ -181,13 +181,42 @@ The server supports multiple installation modes via command-line flags:
 The project integrates with ast-grep CLI using specific command patterns:
 - **Search**: `ast-grep run --pattern <PATTERN> --lang <LANG> --json=stream [PATHS]`
 - **Replace**: `ast-grep run --pattern <PATTERN> --rewrite <REPLACEMENT> --update-all [PATHS]`
-- **Scan**: `ast-grep scan --config <RULES_FILE> --json=stream [PATHS]`
+- **Scan**: `ast-grep scan --rule <RULES_FILE> --json=stream [PATHS]`
 
 Pattern syntax supports:
 - Literal patterns: `"console.log"`
-- Metavariables: `"console.log($_)"` (single expression)
-- Multiple variables: `"function $NAME($ARGS) { $$$ }"` (body content)
+- Metavariables: `"console.log($_)"` (single expression, use UPPERCASE: $VAR)
+- Multiple variables: `"function $NAME($ARGS) { $$$ }"` (body content with triple $)
 - Language-specific patterns for JavaScript, Python, Java, etc.
+
+### Best Practices for Pattern Writing
+- **Metavariables must use UPPERCASE**: Use `$VAR`, not `$var`
+- **Multi-node matching**: Use `$$$` (triple dollar), not `$$`
+- **Pattern validation**: Patterns must be syntactically valid code
+- **Language specificity**: Always specify language for accurate parsing
+- **Constraint usage**: Use `constraints:` section for metavariable filtering
+- **Rule composition**: Use `all:`, `any:`, `not:` for complex matching
+
+### Common Pattern Examples
+```yaml
+# Function calls with any arguments
+pattern: "console.log($$$ARGS)"
+
+# Variable declarations with constraints
+pattern: "var $NAME = $VALUE"
+constraints:
+  NAME:
+    regex: "^[a-z]"
+
+# Complex rule composition
+rule:
+  all:
+  - pattern: "function $NAME($ARGS) { $$$ }"
+  - inside:
+      pattern: "class $CLASS { $$$ }"
+  - not:
+      pattern: "return;"
+```
 
 ## Development Notes
 
@@ -196,3 +225,38 @@ Pattern syntax supports:
 - Platform-specific binaries managed through optional dependencies
 - No traditional test framework - uses simple Node.js test files
 - Error messages include context for debugging and user guidance
+
+## Recent Improvements (Based on QA Feedback)
+
+### Fixed Issues
+1. **Complex Constraint Syntax**: Improved YAML rule generation with proper `constraints:` section and composite rule structure using `all:`, `any:`, `not:` patterns
+2. **Enhanced Error Reporting**: Added specific error messages for pattern syntax, language detection, YAML structure, and constraint issues with actionable guidance
+3. **Line Number Corrections**: Fixed line 0 issues by ensuring proper 0-based to 1-based conversion and validation
+4. **Improved Path Handling**: Enhanced path resolution with better cross-platform support, detailed error messages, and suggestions for missing paths
+
+### Performance Optimizations
+- Maintained fast execution through parallel processing
+- Improved resource limit validation
+- Enhanced file counting for large codebases
+
+### Best Practice Recommendations
+1. **Use Inline Code**: Most reliable - use `code` parameter instead of file paths
+2. **Absolute Paths**: For file-based operations, use absolute paths (e.g., `D:\path\to\file.js`)
+3. **Pattern Testing**: Start simple, test incrementally with ast-grep playground
+4. **Metavariable Guidelines**: UPPERCASE names, `$$$` for multi-node
+5. **Language Specification**: Always specify language for accurate parsing
+6. **Rule Composition**: Use composite rules for complex constraints
+
+### Tool Comparison Advantages
+- **vs grep/ripgrep**: Structural code awareness, not just text matching
+- **vs sed/awk**: Syntax-aware replacements prevent code corruption
+- **vs IDE refactoring**: Scriptable, batch-oriented, cross-project
+- **vs manual review**: Dramatically faster for repetitive patterns
+
+## QA Assessment Integration
+Based on comprehensive QA testing, this tool achieves ⭐⭐⭐⭐⭐ rating for:
+- **Performance**: Fast execution (67ms for 258 matches, 51ms for 33 complex matches)
+- **Flexibility**: Simple text to complex structural transformations
+- **Safety**: Dry-run capabilities prevent code corruption
+- **Extensibility**: Custom rule creation for team-specific standards
+- **Accuracy**: AST-based understanding vs text-only tools

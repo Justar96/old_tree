@@ -1,20 +1,12 @@
 {
   "permissions": {
     "allow": [
+      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"console.log\" --lang javascript --json=stream \"D:\\_Project\\_mcp\\old_tree\\test-example.js\")",
       "WebFetch(domain:ast-grep.github.io)",
       "WebFetch(domain:github.com)",
-      "Bash(npm run build:*)",
+      "Bash(tree-ast-grep-mc:*)",
       "Bash(node:*)",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" --version)",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"console.log\" --lang javascript --json=stream test-example.js)",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"console.log\" --lang javascript --json=stream \"D:\\_Project\\_mcp\\old_tree\\tree-ast-grep-mcp\\test-example.js\")",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"console.log\" --lang javascript --json=stream .)",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"console.log($_)\" --lang javascript --json=stream test-example.js)",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"function $NAME($ARGS) { $$$ }\" --lang javascript --json=stream test-example.js)",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" run --pattern \"console.log\" --json=stream nonexistent.js)",
-      "WebFetch(domain:docs.ast-grep.com)",
-      "WebSearch",
-      "Bash(\"C:\\Users\\nalon\\.ast-grep-mcp\\binaries\\ast-grep-win32-x64.exe\" scan --rule test-rule.yml --json=stream test-example.js)"
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

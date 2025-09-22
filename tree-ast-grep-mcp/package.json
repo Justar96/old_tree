@@ -1,6 +1,6 @@
 {
   "name": "tree-ast-grep-mcp",
-  "version": "1.0.8",
+  "version": "1.0.10",
   "description": "AST-aware code search and manipulation MCP server using ast-grep",
   "main": "./build/index.js",
   "bin": {
@@ -22,11 +22,11 @@
     "ast",
     "code-analysis"
   ],
-  "author": "Cabbages",
+  "author": "justar96",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cabbages/tree-ast-grep-mcp.git"
+    "url": "git+https://github.com/justar96/tree-ast-grep-mcp.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

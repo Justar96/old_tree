@@ -31,54 +31,91 @@ export class WorkspaceManager {
         }
         let currentDir = process.cwd();
         console.error(`Starting workspace detection from: ${currentDir}`);
-        // Look for common project root indicators
-        const rootIndicators = [
-            '.git',
-            'package.json',
-            'Cargo.toml',
-            'pyproject.toml',
-            'go.mod',
-            'composer.json',
-            'Gemfile',
-            'Makefile',
-            'README.md',
-            '.vscode',
-            '.idea'
-        ];
-        // Check current directory first
-        for (const indicator of rootIndicators) {
-            try {
-                fsSync.accessSync(path.join(currentDir, indicator));
-                console.error(`Found workspace indicator '${indicator}' in: ${currentDir}`);
-                return currentDir; // Found indicator in current directory
-            }
-            catch {
-                // Indicator not found, continue
-            }
-        }
-        // Walk up directories looking for indicators
-        let parentDir = path.dirname(currentDir);
-        let depth = 0;
-        const maxDepth = 3; // Reduced from 5 to prevent going too high
-        while (parentDir !== currentDir && depth < maxDepth) {
-            for (const indicator of rootIndicators) {
+        // Enhanced root indicators with priority ordering
+        const primaryIndicators = ['.git', 'package.json', 'Cargo.toml', 'go.mod', 'pom.xml'];
+        const secondaryIndicators = ['pyproject.toml', 'composer.json', 'build.gradle', 'tsconfig.json'];
+        const tertiaryIndicators = ['Makefile', 'README.md', '.vscode', '.idea', 'Gemfile'];
+        const allIndicators = [...primaryIndicators, ...secondaryIndicators, ...tertiaryIndicators];
+        // Enhanced detection with validation - increased search depth to 8 levels
+        for (let depth = 0; depth <= 8; depth++) {
+            // Try primary indicators first (most reliable)
+            for (const indicator of primaryIndicators) {
                 try {
-                    fsSync.accessSync(path.join(parentDir, indicator));
-                    console.error(`Found workspace indicator '${indicator}' in parent: ${parentDir}`);
-                    return parentDir; // Found indicator in parent directory
+                    fsSync.accessSync(path.join(currentDir, indicator));
+                    if (this.validateWorkspaceRoot(currentDir)) {
+                        console.error(`Found primary workspace indicator '${indicator}' in: ${currentDir}`);
+                        return currentDir;
+                    }
                 }
                 catch {
                     // Indicator not found, continue
                 }
             }
+            // Try secondary indicators if no primary found
+            for (const indicator of secondaryIndicators) {
+                try {
+                    fsSync.accessSync(path.join(currentDir, indicator));
+                    if (this.validateWorkspaceRoot(currentDir)) {
+                        console.error(`Found secondary workspace indicator '${indicator}' in: ${currentDir}`);
+                        return currentDir;
+                    }
+                }
+                catch {
+                    // Indicator not found, continue
+                }
+            }
+            // Try tertiary indicators as last resort
+            if (depth >= 2) { // Only check tertiary after going up a bit
+                for (const indicator of tertiaryIndicators) {
+                    try {
+                        fsSync.accessSync(path.join(currentDir, indicator));
+                        if (this.validateWorkspaceRoot(currentDir)) {
+                            console.error(`Found tertiary workspace indicator '${indicator}' in: ${currentDir}`);
+                            return currentDir;
+                        }
+                    }
+                    catch {
+                        // Indicator not found, continue
+                    }
+                }
+            }
+            // Move up one directory
+            const parentDir = path.dirname(currentDir);
+            if (parentDir === currentDir)
+                break; // Reached filesystem root
             currentDir = parentDir;
-            parentDir = path.dirname(currentDir);
-            depth++;
         }
-        // Fallback to current working directory (always safe)
-        const fallbackRoot = process.cwd();
-        console.error(`No workspace indicators found, using current directory: ${fallbackRoot}`);
-        return fallbackRoot;
+        // Enhanced fallback: use current directory with validation
+        const fallback = process.cwd();
+        console.error(`No workspace indicators found, using current directory: ${fallback}`);
+        return fallback;
+    }
+    validateWorkspaceRoot(rootPath) {
+        try {
+            const entries = fsSync.readdirSync(rootPath);
+            // Check for presence of source code files or directories
+            const codeIndicators = ['src', 'lib', 'app', 'components', 'modules', 'source', 'Sources'];
+            const hasCodeStructure = entries.some(entry => {
+                try {
+                    const entryPath = path.join(rootPath, entry);
+                    const stat = fsSync.statSync(entryPath);
+                    if (stat.isDirectory() && codeIndicators.includes(entry)) {
+                        return true;
+                    }
+                    if (stat.isFile() && entry.match(/\.(js|ts|jsx|tsx|py|java|rs|go|cpp|c|h|php|rb)$/i)) {
+                        return true;
+                    }
+                }
+                catch {
+                    // Skip entries we can't stat
+                }
+                return false;
+            });
+            return hasCodeStructure;
+        }
+        catch {
+            return false; // If we can't read the directory, assume it's not a valid workspace
+        }
     }
     getBlockedPaths() {
         const systemPaths = [

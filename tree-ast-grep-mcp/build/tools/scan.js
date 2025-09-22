@@ -2,16 +2,12 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { ParameterValidator } from '../core/validator.js';
-import { ValidationError, ExecutionError } from '../types/errors.js';
-export class ScanTool {
-    binaryManager;
-    validator;
-    workspaceManager;
+import { BaseTool } from '../core/tool-base.js';
+import { AstGrepErrorTranslator } from '../core/error-handler.js';
+import { ValidationError } from '../types/errors.js';
+export class ScanTool extends BaseTool {
     constructor(binaryManager, workspaceManager) {
-        this.binaryManager = binaryManager;
-        this.workspaceManager = workspaceManager;
-        this.validator = new ParameterValidator(workspaceManager.getWorkspaceRoot());
+        super(workspaceManager, binaryManager);
     }
     async execute(params) {
         // Validate parameters
@@ -23,8 +19,8 @@ export class ScanTool {
             });
         }
         const sanitizedParams = validation.sanitized;
-        // Default to current working directory if no paths specified to avoid scanning entire system
-        const defaultPaths = sanitizedParams.paths || [process.cwd()];
+        // Use enhanced path resolution from BaseTool
+        const defaultPaths = sanitizedParams.paths || ['.'];
         // Validate resource limits
         const resourceValidation = await this.validator.validateResourceLimits(defaultPaths);
         if (!resourceValidation.valid) {
@@ -33,26 +29,21 @@ export class ScanTool {
                 params: sanitizedParams
             });
         }
-        // Validate paths
-        const pathValidation = this.workspaceManager.validatePaths(defaultPaths);
-        if (!pathValidation.valid) {
-            throw new ValidationError('Invalid paths', {
-                errors: pathValidation.errors,
-                params: sanitizedParams
-            });
-        }
+        // Use unified path resolution
+        const pathResolution = await this.resolveAndValidatePaths(defaultPaths);
+        const resolvedPaths = pathResolution.targets;
         try {
             let findings = [];
             let filesScanned = 0;
             if (sanitizedParams.rules) {
                 // Use custom rules file or inline rules
-                const result = await this.scanWithRules(sanitizedParams, pathValidation.resolvedPaths);
+                const result = await this.scanWithRules(sanitizedParams, resolvedPaths);
                 findings = result.findings;
                 filesScanned = result.filesScanned;
             }
             else {
                 // Use built-in rules or scan without specific rules
-                const result = await this.scanWithoutRules(sanitizedParams, pathValidation.resolvedPaths);
+                const result = await this.scanWithoutRules(sanitizedParams, resolvedPaths);
                 findings = result.findings;
                 filesScanned = result.filesScanned;
             }
@@ -78,13 +69,13 @@ export class ScanTool {
             if (error instanceof ValidationError) {
                 throw error;
             }
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            // Try to translate ast-grep errors to user-friendly messages
-            const friendlyMessage = this.validator.translateAstGrepError(errorMessage, {
+            // Use enhanced error handling from BaseTool
+            const contextualError = AstGrepErrorTranslator.createUserFriendlyError(error instanceof Error ? error : new Error(String(error)), {
                 paths: sanitizedParams.paths,
-                rules: sanitizedParams.rules
+                rules: sanitizedParams.rules,
+                workspace: this.getWorkspaceRoot()
             });
-            throw new ExecutionError(`Scan execution failed: ${friendlyMessage}`, { params: sanitizedParams, originalError: error });
+            throw contextualError;
         }
     }
     async scanWithRules(params, resolvedPaths) {
@@ -179,48 +170,11 @@ export class ScanTool {
         if (rulesFile) {
             args.push('--rule', rulesFile);
         }
-        // Add include patterns using globs
-        if (params.include && params.include.length > 0) {
-            for (const pattern of params.include) {
-                args.push('--globs', pattern);
-            }
-        }
-        // Add exclude patterns
-        if (params.exclude && params.exclude.length > 0) {
-            for (const pattern of params.exclude) {
-                args.push('--globs', `!${pattern}`);
-            }
-        }
-        // Respect ignore settings
-        if (params.noIgnore) {
-            // ast-grep requires specific values for --no-ignore
-            args.push('--no-ignore', 'hidden');
-            args.push('--no-ignore', 'dot');
-            args.push('--no-ignore', 'vcs');
-        }
-        if (params.ignorePath && params.ignorePath.length > 0) {
-            for (const ig of params.ignorePath) {
-                args.push('--ignore-path', ig);
-            }
-        }
-        // Root/workdir controls
-        if (params.root) {
-            args.push('--root', params.root);
-        }
-        if (params.workdir) {
-            args.push('--workdir', params.workdir);
-        }
-        // Add JSON output format
+        // Use BaseTool methods for consistent parameter handling
+        args.push(...this.buildCommonArgs(params));
+        // Add JSON output format for scan (different from search/run tools)
         if (params.format === 'json') {
-            args.push(`--json=${params.jsonStyle || 'stream'}`);
-        }
-        // Follow symlinks
-        if (params.follow) {
-            args.push('--follow');
-        }
-        // Threads
-        if (params.threads) {
-            args.push('--threads', String(params.threads));
+            args.push(...this.buildJsonArgs(params.jsonStyle));
         }
         // Add paths (must come after options)
         args.push(...resolvedPaths);
@@ -295,15 +249,30 @@ export class ScanTool {
     }
     parseSingleFinding(finding) {
         const file = finding.file || finding.path || '';
-        const line = finding.line ?? finding.start?.line ?? 0;
-        const column = finding.column ?? finding.start?.column ?? 0;
+        // Fix line number issues - ensure proper 1-based line numbers
+        let line = finding.line ?? finding.range?.start?.line ?? finding.start?.line ?? 0;
+        let column = finding.column ?? finding.range?.start?.column ?? finding.start?.column ?? 0;
+        // Convert to numbers and handle invalid values
+        line = typeof line === 'number' ? line : Number(line);
+        column = typeof column === 'number' ? column : Number(column);
+        // ast-grep may return 0-based lines in some contexts, ensure 1-based
+        if (line <= 0) {
+            line = 1; // Default to line 1 if invalid
+        }
+        else if (finding.range?.start?.line !== undefined) {
+            // If we have range data, convert from 0-based to 1-based
+            line = Number(finding.range.start.line) + 1;
+        }
+        // Ensure column is valid (0-based is acceptable for columns)
+        if (column < 0)
+            column = 0;
         return {
             ruleId: finding.ruleId || finding.id || 'unknown',
             severity: finding.severity || finding.level || 'info',
             message: finding.message || finding.text || '',
             file,
-            line: typeof line === 'number' ? line : Number(line),
-            column: typeof column === 'number' ? column : Number(column),
+            line,
+            column,
             fix: finding.fix || finding.suggestion
         };
     }

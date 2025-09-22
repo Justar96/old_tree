@@ -9,6 +9,7 @@ export declare class WorkspaceManager {
     constructor(explicitRoot?: string);
     private detectWorkspace;
     private autoDetectWorkspaceRoot;
+    private validateWorkspaceRoot;
     private getBlockedPaths;
     getConfig(): WorkspaceConfig;
     getWorkspaceRoot(): string;

@@ -1,10 +1,8 @@
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
+import { BaseTool } from '../core/tool-base.js';
 import { SearchParams, SearchResult } from '../types/schemas.js';
-export declare class SearchTool {
-    private binaryManager;
-    private validator;
-    private workspaceManager;
+export declare class SearchTool extends BaseTool {
     constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
     execute(params: SearchParams): Promise<SearchResult>;
     private buildSearchArgs;
