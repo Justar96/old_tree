@@ -19,5 +19,6 @@ export declare class ParameterValidator {
     private getDefaultExcludes;
     private detectLanguageFromPattern;
     translateAstGrepError(stderr: string): string;
+    validateRuleBuilderParams(params: any): ValidationResult;
 }
 //# sourceMappingURL=validator.d.ts.map

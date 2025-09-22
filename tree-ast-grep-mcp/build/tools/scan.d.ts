@@ -64,6 +64,54 @@ export declare class ScanTool {
                     };
                     description: string;
                 };
+                timeoutMs: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                relativePaths: {
+                    type: string;
+                    default: boolean;
+                    description: string;
+                };
+                jsonStyle: {
+                    type: string;
+                    enum: string[];
+                    default: string;
+                    description: string;
+                };
+                follow: {
+                    type: string;
+                    default: boolean;
+                    description: string;
+                };
+                threads: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                noIgnore: {
+                    type: string;
+                    default: boolean;
+                    description: string;
+                };
+                ignorePath: {
+                    type: string;
+                    items: {
+                        type: string;
+                    };
+                    description: string;
+                };
+                root: {
+                    type: string;
+                    description: string;
+                };
+                workdir: {
+                    type: string;
+                    description: string;
+                };
             };
         };
     };

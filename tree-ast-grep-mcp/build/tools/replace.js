@@ -44,13 +44,28 @@ export class ReplaceTool {
         try {
             // Build ast-grep command arguments
             const args = this.buildReplaceArgs(sanitizedParams, pathValidation.resolvedPaths);
-            // Execute ast-grep
-            const result = await this.binaryManager.executeAstGrep(args, {
-                cwd: this.workspaceManager.getWorkspaceRoot(),
-                timeout: sanitizedParams.dryRun ? 30000 : 60000 // Longer timeout for actual replacements
-            });
+            // Execute ast-grep (stdin if code provided)
+            let result;
+            const timeout = sanitizedParams.dryRun ? (sanitizedParams.timeoutMs ?? 30000) : (sanitizedParams.timeoutMs ?? 60000);
+            if (sanitizedParams.code) {
+                const stdinArgs = [...args, '--stdin'];
+                if (sanitizedParams.stdinFilepath) {
+                    stdinArgs.push('--stdin-filepath', sanitizedParams.stdinFilepath);
+                }
+                result = await this.binaryManager.executeAstGrep(stdinArgs, {
+                    cwd: this.workspaceManager.getWorkspaceRoot(),
+                    timeout,
+                    stdin: sanitizedParams.code
+                });
+            }
+            else {
+                result = await this.binaryManager.executeAstGrep(args, {
+                    cwd: this.workspaceManager.getWorkspaceRoot(),
+                    timeout
+                });
+            }
             // Parse results
-            const changes = this.parseReplaceResults(result.stdout, sanitizedParams.dryRun);
+            const changes = this.parseReplaceResults(result.stdout, sanitizedParams);
             return {
                 changes,
                 summary: {
@@ -112,42 +127,117 @@ export class ReplaceTool {
                 args.push('--globs', `!${pattern}`);
             }
         }
-        // Interactive mode - ast-grep has built-in interactive support
+        // Respect ignore settings
+        if (params.noIgnore) {
+            args.push('--no-ignore');
+        }
+        if (params.ignorePath && params.ignorePath.length > 0) {
+            for (const ig of params.ignorePath) {
+                args.push('--ignore-path', ig);
+            }
+        }
+        // Root/workdir controls
+        if (params.root) {
+            args.push('--root', params.root);
+        }
+        if (params.workdir) {
+            args.push('--workdir', params.workdir);
+        }
+        // JSON output for parsing and diff preview in dry-run
+        args.push(`--json=${params.jsonStyle || 'stream'}`);
+        if (params.dryRun) {
+            args.push('--diff');
+        }
+        // Follow symlinks
+        if (params.follow) {
+            args.push('--follow');
+        }
+        // Threads
+        if (params.threads) {
+            args.push('--threads', String(params.threads));
+        }
+        // Interactive vs update-all
         if (params.interactive && !params.dryRun) {
             args.push('--interactive');
         }
         else if (!params.dryRun) {
-            // For non-interactive, non-dry-run mode, use update-all
             args.push('--update-all');
         }
-        // JSON output for parsing
-        args.push('--json=stream');
-        // Add paths (must come after options)
-        args.push(...resolvedPaths);
+        // Add paths when not using stdin
+        if (!params.code) {
+            args.push(...resolvedPaths);
+        }
         return args;
     }
-    parseReplaceResults(stdout, isDryRun) {
+    parseReplaceResults(stdout, params) {
         const changes = [];
+        const workspaceRoot = this.workspaceManager.getWorkspaceRoot();
         if (!stdout.trim()) {
             return changes;
         }
+        const pushChange = (raw) => {
+            let filePath = raw.file || raw.path || '';
+            if (params.relativePaths && filePath) {
+                try {
+                    const abs = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
+                    const rel = path.relative(workspaceRoot, abs) || filePath;
+                    filePath = rel.replace(/\\/g, '/');
+                }
+                catch { }
+            }
+            const captures = Array.isArray(raw.captures) ? raw.captures.map((c) => ({
+                name: String(c.name ?? ''),
+                text: c.text,
+                startLine: c.range?.start?.line !== undefined ? Number(c.range.start.line) + 1 : undefined,
+                startColumn: c.range?.start?.column !== undefined ? Number(c.range.start.column) : undefined,
+                endLine: c.range?.end?.line !== undefined ? Number(c.range.end.line) + 1 : undefined,
+                endColumn: c.range?.end?.column !== undefined ? Number(c.range.end.column) : undefined,
+            })) : undefined;
+            changes.push({
+                file: filePath,
+                matches: raw.matches || raw.count || 0,
+                preview: params.dryRun ? raw.preview || raw.diff : undefined,
+                applied: !params.dryRun && (raw.applied !== false),
+                captures
+            });
+        };
         try {
-            // ast-grep outputs one JSON object per line
-            const lines = stdout.trim().split('\n');
-            for (const line of lines) {
-                if (!line.trim())
-                    continue;
-                const result = JSON.parse(line);
-                // Handle different ast-grep output formats
-                if (result.changes) {
-                    // Multiple changes in one result
-                    for (const change of result.changes) {
-                        changes.push(this.parseSingleChange(change, isDryRun));
+            if ((params.jsonStyle || 'stream') === 'stream') {
+                const lines = stdout.trim().split('\n');
+                for (const line of lines) {
+                    if (!line.trim())
+                        continue;
+                    const result = JSON.parse(line);
+                    if (Array.isArray(result.changes)) {
+                        for (const change of result.changes)
+                            pushChange(change);
+                    }
+                    else if (result.file) {
+                        pushChange(result);
                     }
                 }
-                else if (result.file) {
-                    // Single change
-                    changes.push(this.parseSingleChange(result, isDryRun));
+            }
+            else {
+                const parsed = JSON.parse(stdout);
+                if (Array.isArray(parsed)) {
+                    for (const record of parsed) {
+                        if (Array.isArray(record.changes)) {
+                            for (const change of record.changes)
+                                pushChange(change);
+                        }
+                        else if (record.file) {
+                            pushChange(record);
+                        }
+                    }
+                }
+                else {
+                    if (Array.isArray(parsed.changes)) {
+                        for (const change of parsed.changes)
+                            pushChange(change);
+                    }
+                    else if (parsed.file) {
+                        pushChange(parsed);
+                    }
                 }
             }
         }
@@ -160,25 +250,26 @@ export class ReplaceTool {
                 for (const match of fileMatches) {
                     const [, count, file] = match.match(/(\d+)\s+matches?\s+in\s+(.+)/) || [];
                     if (count && file) {
+                        let filePath = file.trim();
+                        if (params.relativePaths && filePath) {
+                            try {
+                                const abs = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
+                                const rel = path.relative(workspaceRoot, abs) || filePath;
+                                filePath = rel.replace(/\\/g, '/');
+                            }
+                            catch { }
+                        }
                         changes.push({
-                            file: file.trim(),
+                            file: filePath,
                             matches: parseInt(count, 10),
-                            applied: !isDryRun,
-                            preview: isDryRun ? `Would modify ${count} matches in ${file}` : undefined
+                            applied: !params.dryRun,
+                            preview: params.dryRun ? `Would modify ${count} matches in ${file}` : undefined
                         });
                     }
                 }
             }
         }
         return changes;
-    }
-    parseSingleChange(change, isDryRun) {
-        return {
-            file: change.file || change.path || '',
-            matches: change.matches || change.count || 0,
-            preview: isDryRun ? change.preview || change.diff : undefined,
-            applied: !isDryRun && (change.applied !== false)
-        };
     }
     // Get tool schema for MCP
     static getSchema() {
@@ -224,6 +315,60 @@ export class ReplaceTool {
                         type: 'array',
                         items: { type: 'string' },
                         description: 'Exclude glob patterns (default: node_modules, .git, dist, build, coverage, *.min.js)'
+                    },
+                    timeoutMs: {
+                        type: 'number',
+                        minimum: 1000,
+                        maximum: 120000,
+                        description: 'Timeout for ast-grep execution in milliseconds'
+                    },
+                    relativePaths: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Return file paths relative to workspace root'
+                    },
+                    jsonStyle: {
+                        type: 'string',
+                        enum: ['stream', 'pretty', 'compact'],
+                        default: 'stream',
+                        description: 'JSON output format to request from ast-grep'
+                    },
+                    follow: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Follow symlinks during search'
+                    },
+                    threads: {
+                        type: 'number',
+                        minimum: 1,
+                        maximum: 64,
+                        description: 'Number of threads to use'
+                    },
+                    noIgnore: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Disable ignore rules (use carefully)'
+                    },
+                    ignorePath: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Additional ignore file(s) to respect'
+                    },
+                    root: {
+                        type: 'string',
+                        description: 'Override project root used by ast-grep'
+                    },
+                    workdir: {
+                        type: 'string',
+                        description: 'Working directory for ast-grep'
+                    },
+                    code: {
+                        type: 'string',
+                        description: 'Apply rewrite on code provided via stdin instead of files (requires language)'
+                    },
+                    stdinFilepath: {
+                        type: 'string',
+                        description: 'Virtual filepath for stdin content, used for language/ignore resolution'
                     }
                 },
                 required: ['pattern', 'replacement']

@@ -130,7 +130,7 @@ export class ScanTool {
       // Execute ast-grep
       const result = await this.binaryManager.executeAstGrep(args, {
         cwd: this.workspaceManager.getWorkspaceRoot(),
-        timeout: 60000 // 60 seconds for scans
+        timeout: params.timeoutMs ?? 60000
       });
 
       // Parse results
@@ -190,9 +190,37 @@ export class ScanTool {
       }
     }
 
+    // Respect ignore settings
+    if (params.noIgnore) {
+      args.push('--no-ignore');
+    }
+    if (params.ignorePath && params.ignorePath.length > 0) {
+      for (const ig of params.ignorePath) {
+        args.push('--ignore-path', ig);
+      }
+    }
+
+    // Root/workdir controls
+    if (params.root) {
+      args.push('--root', params.root);
+    }
+    if (params.workdir) {
+      args.push('--workdir', params.workdir);
+    }
+
     // Add JSON output format
     if (params.format === 'json') {
-      args.push('--json=stream');
+      args.push(`--json=${params.jsonStyle || 'stream'}`);
+    }
+
+    // Follow symlinks
+    if (params.follow) {
+      args.push('--follow');
+    }
+
+    // Threads
+    if (params.threads) {
+      args.push('--threads', String(params.threads));
     }
 
     // Add paths (must come after options)
@@ -209,18 +237,26 @@ export class ScanTool {
     }
 
     try {
-      if (stdout.trim().startsWith('{') || stdout.trim().startsWith('[')) {
-        // JSON format
-        const results = JSON.parse(stdout);
-
+      // Try parsing stream JSONL first
+      const trimmed = stdout.trim();
+      if (trimmed.includes('\n') && trimmed.split('\n').every(l => l.trim().startsWith('{') || l.trim() === '')) {
+        for (const line of trimmed.split('\n')) {
+          const l = line.trim();
+          if (!l) continue;
+          const obj = JSON.parse(l);
+          if (Array.isArray(obj.findings)) {
+            for (const f of obj.findings) findings.push(this.parseSingleFinding(f));
+          } else if (obj.ruleId || obj.file) {
+            findings.push(this.parseSingleFinding(obj));
+          }
+        }
+      } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        // JSON format: pretty/compact
+        const results = JSON.parse(trimmed);
         if (Array.isArray(results)) {
-          for (const result of results) {
-            findings.push(this.parseSingleFinding(result));
-          }
+          for (const result of results) findings.push(this.parseSingleFinding(result));
         } else if (results.findings) {
-          for (const finding of results.findings) {
-            findings.push(this.parseSingleFinding(finding));
-          }
+          for (const finding of results.findings) findings.push(this.parseSingleFinding(finding));
         } else {
           findings.push(this.parseSingleFinding(results));
         }
@@ -256,13 +292,16 @@ export class ScanTool {
   }
 
   private parseSingleFinding(finding: any): ScanResult['findings'][0] {
+    const file = finding.file || finding.path || '';
+    const line = finding.line ?? finding.start?.line ?? 0;
+    const column = finding.column ?? finding.start?.column ?? 0;
     return {
       ruleId: finding.ruleId || finding.id || 'unknown',
       severity: finding.severity || finding.level || 'info',
       message: finding.message || finding.text || '',
-      file: finding.file || finding.path || '',
-      line: finding.line || finding.start?.line || 0,
-      column: finding.column || finding.start?.column || 0,
+      file,
+      line: typeof line === 'number' ? line : Number(line),
+      column: typeof column === 'number' ? column : Number(column),
       fix: finding.fix || finding.suggestion
     };
   }
@@ -320,6 +359,52 @@ export class ScanTool {
             type: 'array',
             items: { type: 'string' },
             description: 'Exclude glob patterns (default: node_modules, .git, dist, build, coverage, *.min.js)'
+          },
+          timeoutMs: {
+            type: 'number',
+            minimum: 1000,
+            maximum: 180000,
+            description: 'Timeout for ast-grep scan in milliseconds'
+          },
+          relativePaths: {
+            type: 'boolean',
+            default: false,
+            description: 'Return file paths relative to workspace root'
+          },
+          jsonStyle: {
+            type: 'string',
+            enum: ['stream', 'pretty', 'compact'],
+            default: 'stream',
+            description: 'JSON output format to request from ast-grep'
+          },
+          follow: {
+            type: 'boolean',
+            default: false,
+            description: 'Follow symlinks during scan'
+          },
+          threads: {
+            type: 'number',
+            minimum: 1,
+            maximum: 64,
+            description: 'Number of threads to use'
+          },
+          noIgnore: {
+            type: 'boolean',
+            default: false,
+            description: 'Disable ignore rules (use carefully)'
+          },
+          ignorePath: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Additional ignore file(s) to respect'
+          },
+          root: {
+            type: 'string',
+            description: 'Override project root used by ast-grep'
+          },
+          workdir: {
+            type: 'string',
+            description: 'Working directory for ast-grep'
           }
         }
       }

@@ -11,7 +11,7 @@ No manual installation required. Simply add this configuration to your MCP setti
   "mcpServers": {
     "tree-ast-grep": {
       "command": "npx",
-      "args": ["-y", "@cabbages/tree-ast-grep-mcp", "--auto-install"]
+      "args": ["-y", "tree-ast-grep-mcp", "--auto-install"]
     }
   }
 }
@@ -29,7 +29,7 @@ Users only need to add this to their MCP configuration - no manual npm install r
   "mcpServers": {
     "tree-ast-grep": {
       "command": "npx",
-      "args": ["-y", "@cabbages/tree-ast-grep-mcp", "--auto-install"]
+      "args": ["-y", "tree-ast-grep-mcp", "--auto-install"]
     }
   }
 }
@@ -46,7 +46,7 @@ For users who prefer pre-installing:
 
 ```bash
 # Optional: Pre-install globally (not required)
-npm install -g @cabbages/tree-ast-grep-mcp
+npm install -g tree-ast-grep-mcp
 ```
 
 Then use in MCP config:
@@ -55,7 +55,7 @@ Then use in MCP config:
   "mcpServers": {
     "tree-ast-grep": {
       "command": "npx",
-      "args": ["-y", "@cabbages/tree-ast-grep-mcp", "--auto-install"]
+      "args": ["-y", "tree-ast-grep-mcp", "--auto-install"]
     }
   }
 }
@@ -67,7 +67,7 @@ Then use in MCP config:
   "mcpServers": {
     "tree-ast-grep": {
       "command": "npx",
-      "args": ["-y", "@cabbages/tree-ast-grep-mcp", "--use-system"]
+      "args": ["-y", "tree-ast-grep-mcp", "--use-system"]
     }
   }
 }

@@ -9,8 +9,9 @@ import { WorkspaceManager } from './core/workspace-manager.js';
 import { SearchTool } from './tools/search.js';
 import { ReplaceTool } from './tools/replace.js';
 import { ScanTool } from './tools/scan.js';
+import { RunRuleTool } from './tools/rule-builder.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
-import { SearchParams, ReplaceParams, ScanParams } from './types/schemas.js';
+import { SearchParams, ReplaceParams, ScanParams, RunRuleParams } from './types/schemas.js';
 
 // Parse command line arguments for installation options
 function parseArgs(): InstallationOptions {
@@ -61,13 +62,13 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   # Lightweight (requires system ast-grep)
-  npx -y @cabbages/tree-ast-grep-mcp --use-system
+  npx -y tree-ast-grep-mcp --use-system
 
   # Platform-specific
-  npx -y @cabbages/tree-ast-grep-mcp --platform=win32
+  npx -y tree-ast-grep-mcp --platform=win32
 
   # Auto-install (recommended)
-  npx -y @cabbages/tree-ast-grep-mcp --auto-install
+  npx -y tree-ast-grep-mcp --auto-install
 
 MCP CONFIGURATION:
   Add to your MCP settings:
@@ -104,6 +105,7 @@ async function main(): Promise<void> {
     const searchTool = new SearchTool(binaryManager, workspaceManager);
     const replaceTool = new ReplaceTool(binaryManager, workspaceManager);
     const scanTool = new ScanTool(binaryManager, workspaceManager);
+    const ruleRunnerTool = new RunRuleTool(workspaceManager, scanTool);
 
     // Create MCP server
     const server = new Server(
@@ -125,6 +127,7 @@ async function main(): Promise<void> {
           SearchTool.getSchema(),
           ReplaceTool.getSchema(),
           ScanTool.getSchema(),
+          RunRuleTool.getSchema(),
         ],
       };
     });
@@ -165,6 +168,15 @@ async function main(): Promise<void> {
                   type: 'text',
                   text: JSON.stringify(scanResult, null, 2),
                 },
+              ],
+            };
+
+          case 'ast_run_rule':
+            const ruleResult = await ruleRunnerTool.execute(args as RunRuleParams);
+            return {
+              content: [
+                { type: 'text', text: ruleResult.yaml },
+                { type: 'text', text: `\n---\n${JSON.stringify(ruleResult.scan, null, 2)}` },
               ],
             };
 

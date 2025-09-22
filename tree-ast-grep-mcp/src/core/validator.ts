@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ValidationResult, ValidationError, SecurityError } from '../types/errors.js';
-import { SearchParams, ReplaceParams, ScanParams, RewriteParams } from '../types/schemas.js';
+import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderParams } from '../types/schemas.js';
 
 export class ParameterValidator {
   private workspaceRoot: string;
@@ -76,6 +76,63 @@ export class ParameterValidator {
       }
     }
 
+    // Validate timeoutMs
+    if (params.timeoutMs !== undefined) {
+      if (typeof params.timeoutMs !== 'number' || params.timeoutMs < 1000 || params.timeoutMs > 120000) {
+        result.valid = false;
+        result.errors.push('timeoutMs must be between 1000 and 120000 milliseconds');
+      }
+    }
+
+    // Validate perFileMatchLimit
+    if (params.perFileMatchLimit !== undefined) {
+      if (typeof params.perFileMatchLimit !== 'number' || params.perFileMatchLimit < 1 || params.perFileMatchLimit > 1000) {
+        result.valid = false;
+        result.errors.push('perFileMatchLimit must be a number between 1 and 1000');
+      }
+    }
+
+    // Validate ignorePath/root/workdir
+    if (params.ignorePath !== undefined && !Array.isArray(params.ignorePath)) {
+      result.valid = false;
+      result.errors.push('ignorePath must be an array of strings');
+    }
+    if (params.root !== undefined && typeof params.root !== 'string') {
+      result.valid = false;
+      result.errors.push('root must be a string path');
+    }
+    if (params.workdir !== undefined && typeof params.workdir !== 'string') {
+      result.valid = false;
+      result.errors.push('workdir must be a string path');
+    }
+
+    // Validate code/stdinFilepath
+    if (params.code !== undefined && typeof params.code !== 'string') {
+      result.valid = false;
+      result.errors.push('code must be a string');
+    }
+    if (params.stdinFilepath !== undefined && typeof params.stdinFilepath !== 'string') {
+      result.valid = false;
+      result.errors.push('stdinFilepath must be a string path');
+    }
+    if (params.code && params.paths && params.paths.length > 0) {
+      result.warnings.push('Ignoring paths since code is provided for stdin search');
+    }
+
+    // Validate jsonStyle/follow/threads
+    if (params.jsonStyle !== undefined && !['stream', 'pretty', 'compact'].includes(params.jsonStyle)) {
+      result.valid = false;
+      result.errors.push('jsonStyle must be one of: stream, pretty, compact');
+    }
+    if (params.follow !== undefined && typeof params.follow !== 'boolean') {
+      result.valid = false;
+      result.errors.push('follow must be a boolean');
+    }
+    if (params.threads !== undefined && (typeof params.threads !== 'number' || params.threads < 1 || params.threads > 64)) {
+      result.valid = false;
+      result.errors.push('threads must be a number between 1 and 64');
+    }
+
     result.sanitized = {
       pattern: params.pattern.trim(),
       paths: params.paths || ['.'],
@@ -84,6 +141,18 @@ export class ParameterValidator {
       include: params.include,
       exclude: params.exclude || this.getDefaultExcludes(),
       maxMatches: params.maxMatches ?? 100,
+      timeoutMs: params.timeoutMs,
+      relativePaths: params.relativePaths ?? false,
+      perFileMatchLimit: params.perFileMatchLimit,
+      noIgnore: params.noIgnore ?? false,
+      ignorePath: params.ignorePath,
+      root: params.root,
+      workdir: params.workdir,
+      code: params.code,
+      stdinFilepath: params.stdinFilepath,
+      jsonStyle: params.jsonStyle || 'stream',
+      follow: params.follow ?? false,
+      threads: params.threads,
     };
 
     return result;
@@ -132,6 +201,52 @@ export class ParameterValidator {
       }
     }
 
+    // New validations
+    if (params.timeoutMs !== undefined && (typeof params.timeoutMs !== 'number' || params.timeoutMs < 1000 || params.timeoutMs > 180000)) {
+      result.valid = false;
+      result.errors.push('timeoutMs must be between 1000 and 180000 milliseconds');
+    }
+    if (params.relativePaths !== undefined && typeof params.relativePaths !== 'boolean') {
+      result.valid = false;
+      result.errors.push('relativePaths must be a boolean');
+    }
+    if (params.jsonStyle !== undefined && !['stream', 'pretty', 'compact'].includes(params.jsonStyle)) {
+      result.valid = false;
+      result.errors.push('jsonStyle must be one of: stream, pretty, compact');
+    }
+    if (params.follow !== undefined && typeof params.follow !== 'boolean') {
+      result.valid = false;
+      result.errors.push('follow must be a boolean');
+    }
+    if (params.threads !== undefined && (typeof params.threads !== 'number' || params.threads < 1 || params.threads > 64)) {
+      result.valid = false;
+      result.errors.push('threads must be a number between 1 and 64');
+    }
+    if (params.noIgnore !== undefined && typeof params.noIgnore !== 'boolean') {
+      result.valid = false;
+      result.errors.push('noIgnore must be a boolean');
+    }
+    if (params.ignorePath !== undefined && !Array.isArray(params.ignorePath)) {
+      result.valid = false;
+      result.errors.push('ignorePath must be an array of strings');
+    }
+    if (params.root !== undefined && typeof params.root !== 'string') {
+      result.valid = false;
+      result.errors.push('root must be a string path');
+    }
+    if (params.workdir !== undefined && typeof params.workdir !== 'string') {
+      result.valid = false;
+      result.errors.push('workdir must be a string path');
+    }
+    if (params.code !== undefined && typeof params.code !== 'string') {
+      result.valid = false;
+      result.errors.push('code must be a string');
+    }
+    if (params.stdinFilepath !== undefined && typeof params.stdinFilepath !== 'string') {
+      result.valid = false;
+      result.errors.push('stdinFilepath must be a string path');
+    }
+
     result.sanitized = {
       pattern: params.pattern.trim(),
       replacement: String(params.replacement),
@@ -141,6 +256,17 @@ export class ParameterValidator {
       interactive: params.interactive ?? false,
       include: params.include,
       exclude: params.exclude || this.getDefaultExcludes(),
+      timeoutMs: params.timeoutMs,
+      relativePaths: params.relativePaths ?? false,
+      jsonStyle: params.jsonStyle || 'stream',
+      follow: params.follow ?? false,
+      threads: params.threads,
+      noIgnore: params.noIgnore ?? false,
+      ignorePath: params.ignorePath,
+      root: params.root,
+      workdir: params.workdir,
+      code: params.code,
+      stdinFilepath: params.stdinFilepath,
     };
 
     return result;
@@ -171,6 +297,44 @@ export class ParameterValidator {
       }
     }
 
+    // Advanced validations
+    if (params.timeoutMs !== undefined && (typeof params.timeoutMs !== 'number' || params.timeoutMs < 1000 || params.timeoutMs > 180000)) {
+      result.valid = false;
+      result.errors.push('timeoutMs must be between 1000 and 180000 milliseconds');
+    }
+    if (params.relativePaths !== undefined && typeof params.relativePaths !== 'boolean') {
+      result.valid = false;
+      result.errors.push('relativePaths must be a boolean');
+    }
+    if (params.jsonStyle !== undefined && !['stream', 'pretty', 'compact'].includes(params.jsonStyle)) {
+      result.valid = false;
+      result.errors.push('jsonStyle must be one of: stream, pretty, compact');
+    }
+    if (params.follow !== undefined && typeof params.follow !== 'boolean') {
+      result.valid = false;
+      result.errors.push('follow must be a boolean');
+    }
+    if (params.threads !== undefined && (typeof params.threads !== 'number' || params.threads < 1 || params.threads > 64)) {
+      result.valid = false;
+      result.errors.push('threads must be a number between 1 and 64');
+    }
+    if (params.noIgnore !== undefined && typeof params.noIgnore !== 'boolean') {
+      result.valid = false;
+      result.errors.push('noIgnore must be a boolean');
+    }
+    if (params.ignorePath !== undefined && !Array.isArray(params.ignorePath)) {
+      result.valid = false;
+      result.errors.push('ignorePath must be an array of strings');
+    }
+    if (params.root !== undefined && typeof params.root !== 'string') {
+      result.valid = false;
+      result.errors.push('root must be a string path');
+    }
+    if (params.workdir !== undefined && typeof params.workdir !== 'string') {
+      result.valid = false;
+      result.errors.push('workdir must be a string path');
+    }
+
     result.sanitized = {
       rules: params.rules,
       paths: params.paths || ['.'],
@@ -179,6 +343,15 @@ export class ParameterValidator {
       ruleIds: params.ruleIds,
       include: params.include,
       exclude: params.exclude || this.getDefaultExcludes(),
+      timeoutMs: params.timeoutMs,
+      relativePaths: params.relativePaths ?? false,
+      jsonStyle: params.jsonStyle || 'stream',
+      follow: params.follow ?? false,
+      threads: params.threads,
+      noIgnore: params.noIgnore ?? false,
+      ignorePath: params.ignorePath,
+      root: params.root,
+      workdir: params.workdir,
     };
 
     return result;
@@ -545,5 +718,59 @@ export class ParameterValidator {
     }
 
     return stderr; // Return original if no mapping found
+  }
+
+  // Validate rule builder parameters
+  validateRuleBuilderParams(params: any): ValidationResult {
+    const result: ValidationResult = { valid: true, errors: [], warnings: [] };
+
+    if (!params || typeof params !== 'object') {
+      result.valid = false;
+      result.errors.push('Parameters must be an object');
+      return result;
+    }
+
+    if (!params.id || typeof params.id !== 'string' || params.id.trim().length === 0) {
+      result.valid = false;
+      result.errors.push('id is required');
+    }
+    if (!params.language || typeof params.language !== 'string' || params.language.trim().length === 0) {
+      result.valid = false;
+      result.errors.push('language is required');
+    }
+    if (!params.pattern || typeof params.pattern !== 'string' || params.pattern.trim().length === 0) {
+      result.valid = false;
+      result.errors.push('pattern is required');
+    }
+
+    // Basic AST pattern validation
+    const patternValidation = this.validateAstPattern(params.pattern, params.language);
+    if (!patternValidation.valid) {
+      result.valid = false;
+      result.errors.push(...patternValidation.errors);
+      result.warnings.push(...patternValidation.warnings);
+    }
+
+    result.sanitized = {
+      id: String(params.id).trim(),
+      language: String(params.language).trim(),
+      pattern: String(params.pattern).trim(),
+      message: params.message ? String(params.message) : undefined,
+      severity: params.severity || 'warning',
+      kind: params.kind ? String(params.kind) : undefined,
+      insidePattern: params.insidePattern ? String(params.insidePattern) : undefined,
+      hasPattern: params.hasPattern ? String(params.hasPattern) : undefined,
+      notPattern: params.notPattern ? String(params.notPattern) : undefined,
+      where: Array.isArray(params.where) ? params.where.map((w: any) => ({
+        metavariable: String(w.metavariable),
+        regex: w.regex ? String(w.regex) : undefined,
+        notRegex: w.notRegex ? String(w.notRegex) : undefined,
+        equals: w.equals ? String(w.equals) : undefined,
+        includes: w.includes ? String(w.includes) : undefined,
+      })) : undefined,
+      fix: params.fix ? String(params.fix) : undefined,
+    } as RuleBuilderParams;
+
+    return result;
   }
 }

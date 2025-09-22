@@ -7,6 +7,7 @@ import { WorkspaceManager } from './core/workspace-manager.js';
 import { SearchTool } from './tools/search.js';
 import { ReplaceTool } from './tools/replace.js';
 import { ScanTool } from './tools/scan.js';
+import { RunRuleTool } from './tools/rule-builder.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
 // Parse command line arguments for installation options
 function parseArgs() {
@@ -56,13 +57,13 @@ ENVIRONMENT VARIABLES:
 
 EXAMPLES:
   # Lightweight (requires system ast-grep)
-  npx -y @cabbages/tree-ast-grep-mcp --use-system
+  npx -y tree-ast-grep-mcp --use-system
 
   # Platform-specific
-  npx -y @cabbages/tree-ast-grep-mcp --platform=win32
+  npx -y tree-ast-grep-mcp --platform=win32
 
   # Auto-install (recommended)
-  npx -y @cabbages/tree-ast-grep-mcp --auto-install
+  npx -y tree-ast-grep-mcp --auto-install
 
 MCP CONFIGURATION:
   Add to your MCP settings:
@@ -93,6 +94,7 @@ async function main() {
         const searchTool = new SearchTool(binaryManager, workspaceManager);
         const replaceTool = new ReplaceTool(binaryManager, workspaceManager);
         const scanTool = new ScanTool(binaryManager, workspaceManager);
+        const ruleRunnerTool = new RunRuleTool(workspaceManager, scanTool);
         // Create MCP server
         const server = new Server({
             name: 'tree-ast-grep',
@@ -109,6 +111,7 @@ async function main() {
                     SearchTool.getSchema(),
                     ReplaceTool.getSchema(),
                     ScanTool.getSchema(),
+                    RunRuleTool.getSchema(),
                 ],
             };
         });
@@ -145,6 +148,14 @@ async function main() {
                                     type: 'text',
                                     text: JSON.stringify(scanResult, null, 2),
                                 },
+                            ],
+                        };
+                    case 'ast_run_rule':
+                        const ruleResult = await ruleRunnerTool.execute(args);
+                        return {
+                            content: [
+                                { type: 'text', text: ruleResult.yaml },
+                                { type: 'text', text: `\n---\n${JSON.stringify(ruleResult.scan, null, 2)}` },
                             ],
                         };
                     default:

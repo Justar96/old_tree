@@ -22,6 +22,7 @@ export declare class AstGrepBinaryManager {
     executeAstGrep(args: string[], options?: {
         cwd?: string;
         timeout?: number;
+        stdin?: string;
     }): Promise<{
         stdout: string;
         stderr: string;

@@ -9,6 +9,7 @@ export declare class SearchTool {
     execute(params: SearchParams): Promise<SearchResult>;
     private buildSearchArgs;
     private parseSearchResults;
+    private processJsonRecord;
     private parseSingleMatch;
     private extractFilesScanned;
     static getSchema(): {
@@ -58,6 +59,68 @@ export declare class SearchTool {
                     minimum: number;
                     maximum: number;
                     default: number;
+                    description: string;
+                };
+                jsonStyle: {
+                    type: string;
+                    enum: string[];
+                    default: string;
+                    description: string;
+                };
+                follow: {
+                    type: string;
+                    default: boolean;
+                    description: string;
+                };
+                threads: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                timeoutMs: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                relativePaths: {
+                    type: string;
+                    default: boolean;
+                    description: string;
+                };
+                perFileMatchLimit: {
+                    type: string;
+                    minimum: number;
+                    maximum: number;
+                    description: string;
+                };
+                noIgnore: {
+                    type: string;
+                    default: boolean;
+                    description: string;
+                };
+                ignorePath: {
+                    type: string;
+                    items: {
+                        type: string;
+                    };
+                    description: string;
+                };
+                root: {
+                    type: string;
+                    description: string;
+                };
+                workdir: {
+                    type: string;
+                    description: string;
+                };
+                code: {
+                    type: string;
+                    description: string;
+                };
+                stdinFilepath: {
+                    type: string;
                     description: string;
                 };
             };

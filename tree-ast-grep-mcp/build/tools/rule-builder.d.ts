@@ -1,26 +1,81 @@
-import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
-import { ReplaceParams, ReplaceResult } from '../types/schemas.js';
-export declare class ReplaceTool {
-    private binaryManager;
+import { ScanResult, RunRuleParams } from '../types/schemas.js';
+import { ScanTool } from './scan.js';
+export declare class RunRuleTool {
     private validator;
+    private scanTool;
     private workspaceManager;
-    constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
-    execute(params: ReplaceParams): Promise<ReplaceResult>;
-    private createBackups;
-    private buildReplaceArgs;
-    private parseReplaceResults;
+    constructor(workspaceManager: WorkspaceManager, scanTool: ScanTool);
     static getSchema(): {
         name: string;
         description: string;
         inputSchema: {
             type: string;
             properties: {
+                id: {
+                    type: string;
+                    description: string;
+                };
+                language: {
+                    type: string;
+                    description: string;
+                };
                 pattern: {
                     type: string;
                     description: string;
                 };
-                replacement: {
+                message: {
+                    type: string;
+                    description: string;
+                };
+                severity: {
+                    type: string;
+                    enum: string[];
+                    default: string;
+                    description: string;
+                };
+                kind: {
+                    type: string;
+                    description: string;
+                };
+                insidePattern: {
+                    type: string;
+                    description: string;
+                };
+                hasPattern: {
+                    type: string;
+                    description: string;
+                };
+                notPattern: {
+                    type: string;
+                    description: string;
+                };
+                where: {
+                    type: string;
+                    items: {
+                        type: string;
+                        properties: {
+                            metavariable: {
+                                type: string;
+                            };
+                            regex: {
+                                type: string;
+                            };
+                            notRegex: {
+                                type: string;
+                            };
+                            equals: {
+                                type: string;
+                            };
+                            includes: {
+                                type: string;
+                            };
+                        };
+                        required: string[];
+                    };
+                    description: string;
+                };
+                fix: {
                     type: string;
                     description: string;
                 };
@@ -31,87 +86,69 @@ export declare class ReplaceTool {
                     };
                     description: string;
                 };
-                language: {
+                format: {
                     type: string;
-                    description: string;
-                };
-                dryRun: {
-                    type: string;
-                    default: boolean;
-                    description: string;
-                };
-                interactive: {
-                    type: string;
-                    default: boolean;
-                    description: string;
+                    enum: string[];
+                    default: string;
                 };
                 include: {
                     type: string;
                     items: {
                         type: string;
                     };
-                    description: string;
                 };
                 exclude: {
                     type: string;
                     items: {
                         type: string;
                     };
-                    description: string;
+                };
+                ruleIds: {
+                    type: string;
+                    items: {
+                        type: string;
+                    };
                 };
                 timeoutMs: {
                     type: string;
                     minimum: number;
                     maximum: number;
-                    description: string;
                 };
                 relativePaths: {
                     type: string;
                     default: boolean;
-                    description: string;
                 };
                 jsonStyle: {
                     type: string;
                     enum: string[];
                     default: string;
-                    description: string;
                 };
                 follow: {
                     type: string;
                     default: boolean;
-                    description: string;
                 };
                 threads: {
                     type: string;
                     minimum: number;
                     maximum: number;
-                    description: string;
                 };
                 noIgnore: {
                     type: string;
                     default: boolean;
-                    description: string;
                 };
                 ignorePath: {
                     type: string;
                     items: {
                         type: string;
                     };
-                    description: string;
                 };
                 root: {
                     type: string;
-                    description: string;
                 };
                 workdir: {
                     type: string;
-                    description: string;
                 };
-                code: {
-                    type: string;
-                    description: string;
-                };
-                stdinFilepath: {
+                saveTo: {
                     type: string;
                     description: string;
                 };
@@ -119,5 +156,11 @@ export declare class ReplaceTool {
             required: string[];
         };
     };
+    execute(params: RunRuleParams): Promise<{
+        yaml: string;
+        scan: ScanResult;
+        savedPath?: string;
+    }>;
+    private buildYaml;
 }
-//# sourceMappingURL=replace.d.ts.map
+//# sourceMappingURL=rule-builder.d.ts.map

@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { BinaryError } from '../types/errors.js';
 const execFileAsync = promisify(execFile);
@@ -331,21 +331,61 @@ export class AstGrepBinaryManager {
         if (!this.binaryPath) {
             throw new BinaryError('Binary not initialized');
         }
-        const execOptions = {
-            cwd: options.cwd || process.cwd(),
-            timeout: options.timeout || 30000, // 30 second default
-            maxBuffer: 1024 * 1024 * 10, // 10MB buffer
-        };
+        const cwd = options.cwd || process.cwd();
+        const timeout = options.timeout || 30000;
+        // If stdin is provided, use spawn to write to child stdin
+        if (options.stdin !== undefined) {
+            return await new Promise((resolve, reject) => {
+                const child = spawn(this.binaryPath, args, { cwd });
+                let stdout = '';
+                let stderr = '';
+                const timer = setTimeout(() => {
+                    try {
+                        child.kill('SIGKILL');
+                    }
+                    catch { }
+                    reject(new Error(`ast-grep execution timed out after ${timeout}ms`));
+                }, timeout);
+                child.stdout.setEncoding('utf8');
+                child.stderr.setEncoding('utf8');
+                child.stdout.on('data', (chunk) => { stdout += String(chunk); });
+                child.stderr.on('data', (chunk) => { stderr += String(chunk); });
+                child.on('error', (err) => {
+                    clearTimeout(timer);
+                    if (err.code === 'ENOENT') {
+                        reject(new BinaryError(`ast-grep binary not found at ${this.binaryPath}`));
+                    }
+                    else {
+                        reject(new Error(`ast-grep execution failed: ${err instanceof Error ? err.message : String(err)}`));
+                    }
+                });
+                child.on('close', (code) => {
+                    clearTimeout(timer);
+                    if (code === 0) {
+                        resolve({ stdout, stderr });
+                    }
+                    else {
+                        reject(new Error(`ast-grep exited with code ${code}: ${stderr || stdout}`));
+                    }
+                });
+                try {
+                    child.stdin.write(options.stdin);
+                    child.stdin.end();
+                }
+                catch (e) {
+                    clearTimeout(timer);
+                    reject(new Error(`Failed to write stdin to ast-grep: ${e instanceof Error ? e.message : String(e)}`));
+                }
+            });
+        }
+        // No stdin: use execFile
         try {
-            const result = await execFileAsync(this.binaryPath, args, execOptions);
-            return {
-                stdout: result.stdout,
-                stderr: result.stderr,
-            };
+            const result = await execFileAsync(this.binaryPath, args, { cwd, timeout, maxBuffer: 1024 * 1024 * 10 });
+            return { stdout: result.stdout, stderr: result.stderr };
         }
         catch (error) {
             if (error.code === 'ETIMEDOUT') {
-                throw new Error(`ast-grep execution timed out after ${execOptions.timeout}ms`);
+                throw new Error(`ast-grep execution timed out after ${timeout}ms`);
             }
             if (error.code === 'ENOENT') {
                 throw new BinaryError(`ast-grep binary not found at ${this.binaryPath}`);

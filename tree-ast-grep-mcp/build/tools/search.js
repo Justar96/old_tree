@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { ParameterValidator } from '../core/validator.js';
 import { ValidationError, ExecutionError } from '../types/errors.js';
 export class SearchTool {
@@ -39,14 +40,34 @@ export class SearchTool {
         try {
             // Build ast-grep command arguments
             const args = this.buildSearchArgs(sanitizedParams, pathValidation.resolvedPaths);
-            // Execute ast-grep
-            const result = await this.binaryManager.executeAstGrep(args, {
-                cwd: this.workspaceManager.getWorkspaceRoot(),
-                timeout: 30000 // 30 seconds
-            });
+            // Execute ast-grep (stdin if code provided)
+            let result;
+            if (sanitizedParams.code) {
+                const stdinArgs = [...args];
+                stdinArgs.push('--stdin');
+                if (sanitizedParams.stdinFilepath) {
+                    stdinArgs.push('--stdin-filepath', sanitizedParams.stdinFilepath);
+                }
+                // ast-grep expects language for stdin to parse correctly
+                if (sanitizedParams.language) {
+                    // already added earlier
+                }
+                result = await this.binaryManager.executeAstGrep(stdinArgs, {
+                    cwd: this.workspaceManager.getWorkspaceRoot(),
+                    timeout: sanitizedParams.timeoutMs ?? 30000, // 30 seconds
+                    stdin: sanitizedParams.code
+                });
+                // Inject provided code into result parsing context via stdout (ast-grep reads from stdin internally)
+            }
+            else {
+                result = await this.binaryManager.executeAstGrep(args, {
+                    cwd: this.workspaceManager.getWorkspaceRoot(),
+                    timeout: sanitizedParams.timeoutMs ?? 30000 // 30 seconds
+                });
+            }
             // Parse results
-            const matches = this.parseSearchResults(result.stdout);
-            const filesScanned = this.extractFilesScanned(result.stderr);
+            const matches = this.parseSearchResults(result.stdout, sanitizedParams, this.workspaceManager.getWorkspaceRoot());
+            const filesScanned = this.extractFilesScanned(result.stderr, matches);
             return {
                 matches: matches.slice(0, sanitizedParams.maxMatches),
                 summary: {
@@ -91,34 +112,65 @@ export class SearchTool {
                 args.push('--globs', `!${pattern}`);
             }
         }
+        // Respect ignore settings
+        if (params.noIgnore) {
+            args.push('--no-ignore');
+        }
+        if (params.ignorePath && params.ignorePath.length > 0) {
+            for (const ig of params.ignorePath) {
+                args.push('--ignore-path', ig);
+            }
+        }
+        // Root/workdir controls (if provided)
+        if (params.root) {
+            args.push('--root', params.root);
+        }
+        if (params.workdir) {
+            args.push('--workdir', params.workdir);
+        }
         // Add JSON output for parsing
-        args.push('--json=stream');
-        // Add paths (must come after options)
-        args.push(...resolvedPaths);
+        args.push(`--json=${params.jsonStyle || 'stream'}`);
+        // Follow symlinks
+        if (params.follow) {
+            args.push('--follow');
+        }
+        // Threads
+        if (params.threads) {
+            args.push('--threads', String(params.threads));
+        }
+        // Add paths when not using stdin
+        if (!params.code) {
+            args.push(...resolvedPaths);
+        }
         return args;
     }
-    parseSearchResults(stdout) {
+    parseSearchResults(stdout, params, workspaceRoot) {
         const matches = [];
+        const perFileLimit = params.perFileMatchLimit ?? undefined;
+        const fileToCount = new Map();
         if (!stdout.trim()) {
             return matches;
         }
         try {
-            // ast-grep outputs one JSON object per line
-            const lines = stdout.trim().split('\n');
-            for (const line of lines) {
-                if (!line.trim())
-                    continue;
-                const result = JSON.parse(line);
-                // Handle different ast-grep output formats
-                if (result.matches) {
-                    // Multiple matches in one result
-                    for (const match of result.matches) {
-                        matches.push(this.parseSingleMatch(match));
+            if ((params.jsonStyle || 'stream') === 'stream') {
+                // JSONL
+                const lines = stdout.trim().split('\n');
+                for (const line of lines) {
+                    if (!line.trim())
+                        continue;
+                    this.processJsonRecord(JSON.parse(line), matches, fileToCount, perFileLimit, params, workspaceRoot);
+                }
+            }
+            else {
+                // Non-stream: expect JSON array or object with matches
+                const parsed = JSON.parse(stdout);
+                if (Array.isArray(parsed)) {
+                    for (const record of parsed) {
+                        this.processJsonRecord(record, matches, fileToCount, perFileLimit, params, workspaceRoot);
                     }
                 }
-                else if (result.file) {
-                    // Single match
-                    matches.push(this.parseSingleMatch(result));
+                else {
+                    this.processJsonRecord(parsed, matches, fileToCount, perFileLimit, params, workspaceRoot);
                 }
             }
         }
@@ -129,27 +181,78 @@ export class SearchTool {
         }
         return matches;
     }
-    parseSingleMatch(match) {
+    processJsonRecord(result, matches, fileToCount, perFileLimit, params, workspaceRoot) {
+        if (result.matches) {
+            for (const match of result.matches) {
+                const parsed = this.parseSingleMatch(match, params, workspaceRoot);
+                if (perFileLimit) {
+                    const current = fileToCount.get(parsed.file) || 0;
+                    if (current >= perFileLimit)
+                        continue;
+                    fileToCount.set(parsed.file, current + 1);
+                }
+                matches.push(parsed);
+            }
+        }
+        else if (result.file) {
+            const parsed = this.parseSingleMatch(result, params, workspaceRoot);
+            if (perFileLimit) {
+                const current = fileToCount.get(parsed.file) || 0;
+                if (current < perFileLimit) {
+                    fileToCount.set(parsed.file, current + 1);
+                    matches.push(parsed);
+                }
+            }
+            else {
+                matches.push(parsed);
+            }
+        }
+    }
+    parseSingleMatch(match, params, workspaceRoot) {
+        let filePath = match.file || '';
+        if (params.relativePaths && filePath) {
+            try {
+                const abs = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
+                const rel = path.relative(workspaceRoot, abs) || filePath;
+                filePath = rel.replace(/\\/g, '/');
+            }
+            catch {
+                // keep original on failure
+            }
+        }
+        // Extract captures if available from ast-grep JSON
+        const captures = Array.isArray(match.captures) ? match.captures.map((c) => ({
+            name: String(c.name ?? ''),
+            text: c.text,
+            startLine: c.range?.start?.line !== undefined ? Number(c.range.start.line) + 1 : undefined,
+            startColumn: c.range?.start?.column !== undefined ? Number(c.range.start.column) : undefined,
+            endLine: c.range?.end?.line !== undefined ? Number(c.range.end.line) + 1 : undefined,
+            endColumn: c.range?.end?.column !== undefined ? Number(c.range.end.column) : undefined,
+        })) : undefined;
         return {
-            file: match.file || '',
-            line: match.range?.start?.line ? match.range.start.line + 1 : 0, // ast-grep uses 0-based lines
-            column: match.range?.start?.column || 0,
+            file: filePath,
+            line: match.range?.start?.line !== undefined ? Number(match.range.start.line) + 1 : 0, // ast-grep uses 0-based lines
+            column: match.range?.start?.column !== undefined ? Number(match.range.start.column) : 0,
+            endLine: match.range?.end?.line !== undefined ? Number(match.range.end.line) + 1 : undefined,
+            endColumn: match.range?.end?.column !== undefined ? Number(match.range.end.column) : undefined,
             text: match.text || match.lines || '',
             context: {
                 before: match.context?.before || [],
                 after: match.context?.after || []
             },
-            matchedNode: match.text || match.lines || ''
+            matchedNode: match.text || match.lines || '',
+            captures
         };
     }
-    extractFilesScanned(stderr) {
+    extractFilesScanned(stderr, matches) {
         // Try to extract file count from stderr
         const fileCountMatch = stderr.match(/(\d+)\s+files?\s+searched/i);
         if (fileCountMatch) {
             return parseInt(fileCountMatch[1], 10);
         }
         // Fallback: count unique files from matches
-        return 0;
+        const unique = new Set(matches.map(m => m.file));
+        return unique.size || 0;
     }
     // Get tool schema for MCP
     static getSchema() {
@@ -195,6 +298,66 @@ export class SearchTool {
                         maximum: 10000,
                         default: 100,
                         description: 'Maximum number of matches to return'
+                    },
+                    jsonStyle: {
+                        type: 'string',
+                        enum: ['stream', 'pretty', 'compact'],
+                        default: 'stream',
+                        description: 'JSON output format to request from ast-grep'
+                    },
+                    follow: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Follow symlinks during search'
+                    },
+                    threads: {
+                        type: 'number',
+                        minimum: 1,
+                        maximum: 64,
+                        description: 'Number of threads to use'
+                    },
+                    timeoutMs: {
+                        type: 'number',
+                        minimum: 1000,
+                        maximum: 120000,
+                        description: 'Timeout for ast-grep execution in milliseconds (default 30000)'
+                    },
+                    relativePaths: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Return file paths relative to workspace root'
+                    },
+                    perFileMatchLimit: {
+                        type: 'number',
+                        minimum: 1,
+                        maximum: 1000,
+                        description: 'Limit number of matches per file'
+                    },
+                    noIgnore: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Disable ignore rules (use carefully)'
+                    },
+                    ignorePath: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Additional ignore file(s) to respect'
+                    },
+                    root: {
+                        type: 'string',
+                        description: 'Override project root used by ast-grep'
+                    },
+                    workdir: {
+                        type: 'string',
+                        description: 'Working directory for ast-grep'
+                    },
+                    code: {
+                        type: 'string',
+                        description: 'Search code provided via stdin instead of reading files (requires language)'
+                    },
+                    stdinFilepath: {
+                        type: 'string',
+                        description: 'Virtual filepath for stdin content, used for language/ignore resolution'
                     }
                 },
                 required: ['pattern']

@@ -1,9 +1,11 @@
 {
-  "name": "@cabbages/tree-ast-grep-mcp",
+  "name": "tree-ast-grep-mcp",
   "version": "1.0.0",
   "description": "AST-aware code search and manipulation MCP server using ast-grep",
   "main": "./build/index.js",
-  "bin": "./build/index.js",
+  "bin": {
+    "tree-ast-grep-mcp": "build/index.js"
+  },
   "type": "module",
   "scripts": {
     "build": "tsc",
@@ -24,7 +26,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/cabbages/tree-ast-grep-mcp"
+    "url": "git+https://github.com/cabbages/tree-ast-grep-mcp.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -39,14 +41,17 @@
     "node": ">=18.0.0"
   },
   "optionalDependencies": {
-    "@cabbages/tree-ast-grep-mcp-win32": "^1.0.0",
-    "@cabbages/tree-ast-grep-mcp-darwin": "^1.0.0",
-    "@cabbages/tree-ast-grep-mcp-linux": "^1.0.0"
+    "tree-ast-grep-mcp-win32": "^1.0.0",
+    "tree-ast-grep-mcp-darwin": "^1.0.0",
+    "tree-ast-grep-mcp-linux": "^1.0.0"
   },
   "mcpServers": {
     "tree-ast-grep": {
       "command": "npx",
-      "args": ["-y", "@cabbages/tree-ast-grep-mcp"]
+      "args": [
+        "-y",
+        "tree-ast-grep-mcp"
+      ]
     }
   }
 }

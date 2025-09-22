@@ -38,6 +38,9 @@ Think carefully and implement the most concise solution that changes as little c
 - No code duplication - reuse existing functions and constants
 - No dead code - delete unused code entirely
 - Clean separation of concerns
+- No emojis use ascii characters or unicode characters if necessary.
+- Use human written style.
+
 - **Never leave function stubs** - If you cannot complete a function implementation:
   1. Stop immediately and inform the user
   2. Explain what information or decisions are needed
