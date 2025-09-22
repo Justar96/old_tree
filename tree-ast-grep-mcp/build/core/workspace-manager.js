@@ -1,11 +1,20 @@
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
+/**
+ * Detects and manages workspace boundaries used by MCP tools.
+ */
 export class WorkspaceManager {
     config;
+    /**
+     * Build workspace configuration from an optional explicit root.
+     */
     constructor(explicitRoot) {
         this.config = this.detectWorkspace(explicitRoot);
     }
+    /**
+     * Determine the effective workspace root and allowed path boundaries.
+     */
     detectWorkspace(explicitRoot) {
         let workspaceRoot;
         if (explicitRoot) {
@@ -131,6 +140,9 @@ export class WorkspaceManager {
     getConfig() {
         return { ...this.config };
     }
+    /**
+     * Expose the root directory used for workspace relative operations.
+     */
     getWorkspaceRoot() {
         return this.config.root;
     }

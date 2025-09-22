@@ -1,12 +1,21 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+/**
+ * Validates tool parameters against workspace boundaries and security policies.
+ */
 export class ParameterValidator {
     workspaceRoot;
     blockedPaths;
+    /**
+     * Persist the workspace root and populate security guardrails.
+     */
     constructor(workspaceRoot) {
         this.workspaceRoot = path.resolve(workspaceRoot);
         this.blockedPaths = this.getBlockedPaths();
     }
+    /**
+     * Enumerate filesystem locations that tools must never modify.
+     */
     getBlockedPaths() {
         const systemPaths = [
             '/etc', '/bin', '/usr', '/sys', '/proc', // Unix system dirs
@@ -18,6 +27,9 @@ export class ParameterValidator {
         return systemPaths.map(p => path.resolve(p));
     }
     // Validate search parameters
+    /**
+     * Validate search tool parameters and sanitize defaults.
+     */
     validateSearchParams(params) {
         const result = { valid: true, errors: [], warnings: [] };
         // Validate pattern
@@ -138,6 +150,9 @@ export class ParameterValidator {
         return result;
     }
     // Validate replace parameters
+    /**
+     * Validate replace tool parameters and enforce workspace boundaries.
+     */
     validateReplaceParams(params) {
         const result = { valid: true, errors: [], warnings: [] };
         // Validate pattern
@@ -243,6 +258,9 @@ export class ParameterValidator {
         return result;
     }
     // Validate scan parameters
+    /**
+     * Validate scan tool parameters and normalize rule execution options.
+     */
     validateScanParams(params) {
         const result = { valid: true, errors: [], warnings: [] };
         // Validate format
@@ -321,6 +339,9 @@ export class ParameterValidator {
         return result;
     }
     // Validate rewrite parameters
+    /**
+     * Validate rewrite tool parameters including pattern and rewrite rules.
+     */
     validateRewriteParams(params) {
         const result = { valid: true, errors: [], warnings: [] };
         // Validate rules
@@ -346,6 +367,9 @@ export class ParameterValidator {
         return result;
     }
     // Validate paths for security
+    /**
+     * Ensure provided paths stay within the workspace and are accessible.
+     */
     validatePaths(paths) {
         const result = { valid: true, errors: [], warnings: [] };
         const sanitizedPaths = [];
@@ -416,6 +440,9 @@ export class ParameterValidator {
         }
         return result;
     }
+    /**
+     * Estimate file counts by walking directories with safeguards.
+     */
     async countFilesRecursive(dir) {
         let count = 0;
         try {
@@ -442,6 +469,9 @@ export class ParameterValidator {
         return count;
     }
     // Extract metavariables from AST pattern
+    /**
+     * Identify single and multi node metavariables within a pattern.
+     */
     extractMetavariables(pattern) {
         const single = [];
         const multi = [];
@@ -454,6 +484,9 @@ export class ParameterValidator {
         return { single, multi };
     }
     // Validate AST pattern syntax
+    /**
+     * Validate that the ast-grep pattern is syntactically correct for the language.
+     */
     validateAstPattern(pattern, language) {
         const result = { valid: true, errors: [], warnings: [] };
         // Check for basic syntax issues
@@ -501,6 +534,9 @@ export class ParameterValidator {
         return result;
     }
     // Validate pattern-replacement consistency
+    /**
+     * Ensure replacement templates match the captured metavariables.
+     */
     validatePatternReplacementConsistency(pattern, replacement) {
         const result = { valid: true, errors: [], warnings: [] };
         const patternVars = this.extractMetavariables(pattern);
@@ -521,6 +557,9 @@ export class ParameterValidator {
         return result;
     }
     // Check if pattern requires language hint
+    /**
+     * Determine if a pattern needs an explicit language selection.
+     */
     requiresLanguageHint(pattern) {
         // Patterns that typically need language context
         const languageSpecificKeywords = [
@@ -533,6 +572,9 @@ export class ParameterValidator {
         return languageSpecificKeywords.some(keyword => pattern.includes(keyword));
     }
     // Language-specific pattern validation
+    /**
+     * Run language specific validation rules for advanced patterns.
+     */
     validateLanguageSpecificPattern(pattern, language) {
         const result = { valid: true, errors: [], warnings: [] };
         switch (language.toLowerCase()) {
@@ -567,6 +609,9 @@ export class ParameterValidator {
         return result;
     }
     // Get default exclude patterns
+    /**
+     * Provide default exclude globs to avoid scanning generated content.
+     */
     getDefaultExcludes() {
         return [
             'node_modules/**',
@@ -582,6 +627,9 @@ export class ParameterValidator {
         ];
     }
     // Detect language from pattern content
+    /**
+     * Infer a probable language from a pattern when none is specified.
+     */
     detectLanguageFromPattern(pattern) {
         // JavaScript/TypeScript patterns
         if (pattern.match(/\b(function|const|let|var|import|export|class|interface|type)\b/)) {
@@ -672,6 +720,9 @@ export class ParameterValidator {
         return `${errorMessage} (Workspace: ${this.workspaceRoot})`;
     }
     // Validate rule builder parameters
+    /**
+     * Validate rule builder inputs before generating or executing ast-grep rules.
+     */
     validateRuleBuilderParams(params) {
         const result = { valid: true, errors: [], warnings: [] };
         if (!params || typeof params !== 'object') {

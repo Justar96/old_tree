@@ -5,10 +5,19 @@ import * as os from 'os';
 import { BaseTool } from '../core/tool-base.js';
 import { AstGrepErrorTranslator } from '../core/error-handler.js';
 import { ValidationError } from '../types/errors.js';
+/**
+ * Executes ast-grep scan operations and aggregates diagnostics for MCP clients.
+ */
 export class ScanTool extends BaseTool {
+    /**
+     * Initialize the scan tool with workspace context and binary execution support.
+     */
     constructor(binaryManager, workspaceManager) {
         super(workspaceManager, binaryManager);
     }
+    /**
+     * Run ast-grep scan with validation and enrich the output with summary metrics.
+     */
     async execute(params) {
         // Validate parameters
         const validation = this.validator.validateScanParams(params);
@@ -364,6 +373,9 @@ export class ScanTool extends BaseTool {
         return count;
     }
     // Get tool schema for MCP
+    /**
+     * Describe the MCP schema for the scan tool.
+     */
     static getSchema() {
         return {
             name: 'ast_scan',

@@ -1,17 +1,29 @@
+/**
+ * Base error type that carries a machine readable code and optional context.
+ */
 export declare abstract class AstGrepMCPError extends Error {
     readonly context?: any | undefined;
     abstract readonly code: string;
     abstract readonly recoverable: boolean;
     constructor(message: string, context?: any | undefined);
 }
+/**
+ * Signals invalid parameters or user input that callers can correct.
+ */
 export declare class ValidationError extends AstGrepMCPError {
     readonly code = "VALIDATION_ERROR";
     readonly recoverable = true;
 }
+/**
+ * Indicates binary discovery or execution failures that require operator action.
+ */
 export declare class BinaryError extends AstGrepMCPError {
     readonly code = "BINARY_ERROR";
     readonly recoverable = false;
 }
+/**
+ * Raised when a request violates workspace security constraints.
+ */
 export declare class SecurityError extends AstGrepMCPError {
     readonly code = "SECURITY_ERROR";
     readonly recoverable = false;
@@ -24,6 +36,9 @@ export declare class FileSystemError extends AstGrepMCPError {
     readonly code = "FILESYSTEM_ERROR";
     readonly recoverable = true;
 }
+/**
+ * Represents ast-grep runtime failures that may be transient or recoverable.
+ */
 export declare class ExecutionError extends AstGrepMCPError {
     readonly code = "EXECUTION_ERROR";
     readonly recoverable = true;

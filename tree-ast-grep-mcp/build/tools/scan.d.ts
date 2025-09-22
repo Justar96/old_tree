@@ -2,8 +2,17 @@ import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
 import { BaseTool } from '../core/tool-base.js';
 import { ScanParams, ScanResult } from '../types/schemas.js';
+/**
+ * Executes ast-grep scan operations and aggregates diagnostics for MCP clients.
+ */
 export declare class ScanTool extends BaseTool {
+    /**
+     * Initialize the scan tool with workspace context and binary execution support.
+     */
     constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
+    /**
+     * Run ast-grep scan with validation and enrich the output with summary metrics.
+     */
     execute(params: ScanParams): Promise<ScanResult>;
     private scanWithRules;
     private scanWithoutRules;
@@ -14,6 +23,9 @@ export declare class ScanTool extends BaseTool {
     private extractFilesScanned;
     private countFilesInPaths;
     private countFilesInDirectory;
+    /**
+     * Describe the MCP schema for the scan tool.
+     */
     static getSchema(): {
         name: string;
         description: string;

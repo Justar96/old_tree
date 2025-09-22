@@ -3,10 +3,16 @@ import * as fsSync from 'fs';
 import { BaseTool } from '../core/tool-base.js';
 import { AstGrepErrorTranslator } from '../core/error-handler.js';
 import { ValidationError } from '../types/errors.js';
+/**
+ * Executes ast-grep search operations and formats results for MCP clients.
+ */
 export class SearchTool extends BaseTool {
     constructor(binaryManager, workspaceManager) {
         super(workspaceManager, binaryManager);
     }
+    /**
+     * Run an ast-grep search with validated parameters and return structured matches.
+     */
     async execute(params) {
         const startTime = Date.now();
         // Validate parameters
@@ -89,6 +95,9 @@ export class SearchTool extends BaseTool {
             throw contextualError;
         }
     }
+    /**
+     * Convert validated parameters into ast-grep CLI arguments.
+     */
     buildSearchArgs(params, resolvedPaths) {
         const args = [];
         // Add pattern (required)
@@ -107,6 +116,9 @@ export class SearchTool extends BaseTool {
         }
         return args;
     }
+    /**
+     * Parse ast-grep JSON output into structured match records.
+     */
     parseSearchResults(stdout, params, workspaceRoot) {
         const matches = [];
         const perFileLimit = params.perFileMatchLimit ?? undefined;
@@ -229,6 +241,9 @@ export class SearchTool extends BaseTool {
             captures
         };
     }
+    /**
+     * Estimate how many files ast-grep processed using stderr hints and match data.
+     */
     extractFilesScanned(stderr, matches, resolvedPaths) {
         // Try to extract file count from stderr across multiple phrasings
         const patterns = [
@@ -316,6 +331,9 @@ export class SearchTool extends BaseTool {
         return count;
     }
     // Get tool schema for MCP
+    /**
+     * Describe the MCP tool schema exposed to clients.
+     */
     static getSchema() {
         return {
             name: 'ast_search',

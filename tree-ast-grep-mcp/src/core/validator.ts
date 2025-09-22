@@ -3,11 +3,17 @@ import * as path from 'path';
 import { ValidationResult, ValidationError, SecurityError } from '../types/errors.js';
 import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderParams } from '../types/schemas.js';
 
-/**`r`n * Validates tool parameters against workspace boundaries and security policies.`r`n */`r`nexport class ParameterValidator {
+/**
+ * Validates tool parameters against workspace boundaries and security policies.
+ */
+export class ParameterValidator {
   private workspaceRoot: string;
   private blockedPaths: string[];
 
-  /**`r`n   * Persist the workspace root and populate security guardrails.`r`n   */`r`n  constructor(workspaceRoot: string) {
+  /**
+   * Persist the workspace root and populate security guardrails.
+   */
+  constructor(workspaceRoot: string) {
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.blockedPaths = this.getBlockedPaths();
   }
@@ -28,7 +34,10 @@ import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderPara
   }
 
   // Validate search parameters
-  /**`r`n   * Validate search tool parameters and sanitize defaults.`r`n   */`r`n  validateSearchParams(params: any): ValidationResult {
+  /**
+   * Validate search tool parameters and sanitize defaults.
+   */
+  validateSearchParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate pattern
@@ -162,7 +171,10 @@ import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderPara
   }
 
   // Validate replace parameters
-  /**`r`n   * Validate replace tool parameters and enforce workspace boundaries.`r`n   */`r`n  validateReplaceParams(params: any): ValidationResult {
+  /**
+   * Validate replace tool parameters and enforce workspace boundaries.
+   */
+  validateReplaceParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate pattern
@@ -276,7 +288,10 @@ import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderPara
   }
 
   // Validate scan parameters
-  /**`r`n   * Validate scan tool parameters and normalize rule execution options.`r`n   */`r`n  validateScanParams(params: any): ValidationResult {
+  /**
+   * Validate scan tool parameters and normalize rule execution options.
+   */
+  validateScanParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate format
@@ -361,7 +376,10 @@ import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderPara
   }
 
   // Validate rewrite parameters
-  /**`r`n   * Validate rewrite tool parameters including pattern and rewrite rules.`r`n   */`r`n  validateRewriteParams(params: any): ValidationResult {
+  /**
+   * Validate rewrite tool parameters including pattern and rewrite rules.
+   */
+  validateRewriteParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate rules
@@ -800,7 +818,10 @@ import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderPara
   }
 
   // Validate rule builder parameters
-  /**`r`n   * Validate rule builder inputs before generating or executing ast-grep rules.`r`n   */`r`n  validateRuleBuilderParams(params: any): ValidationResult {
+  /**
+   * Validate rule builder inputs before generating or executing ast-grep rules.
+   */
+  validateRuleBuilderParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     if (!params || typeof params !== 'object') {
@@ -853,7 +874,3 @@ import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderPara
     return result;
   }
 }
-
-
-
-

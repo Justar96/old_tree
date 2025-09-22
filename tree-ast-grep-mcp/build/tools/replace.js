@@ -2,15 +2,24 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ParameterValidator } from '../core/validator.js';
 import { ValidationError, ExecutionError } from '../types/errors.js';
+/**
+ * Performs ast-grep replacements and writes changes within the workspace.
+ */
 export class ReplaceTool {
     binaryManager;
     validator;
     workspaceManager;
+    /**
+     * Initialize the tool with binary execution and workspace services.
+     */
     constructor(binaryManager, workspaceManager) {
         this.binaryManager = binaryManager;
         this.workspaceManager = workspaceManager;
         this.validator = new ParameterValidator(workspaceManager.getWorkspaceRoot());
     }
+    /**
+     * Run ast-grep replace with validated parameters and return change metadata.
+     */
     async execute(params) {
         // Validate parameters
         const validation = this.validator.validateReplaceParams(params);
@@ -280,6 +289,9 @@ export class ReplaceTool {
         return blocks;
     }
     // Get tool schema for MCP
+    /**
+     * Describe the MCP schema for the replace tool.
+     */
     static getSchema() {
         return {
             name: 'ast_replace',

@@ -2,16 +2,34 @@ import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
 import { BaseTool } from '../core/tool-base.js';
 import { SearchParams, SearchResult } from '../types/schemas.js';
+/**
+ * Executes ast-grep search operations and formats results for MCP clients.
+ */
 export declare class SearchTool extends BaseTool {
     constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
+    /**
+     * Run an ast-grep search with validated parameters and return structured matches.
+     */
     execute(params: SearchParams): Promise<SearchResult>;
+    /**
+     * Convert validated parameters into ast-grep CLI arguments.
+     */
     private buildSearchArgs;
+    /**
+     * Parse ast-grep JSON output into structured match records.
+     */
     private parseSearchResults;
     private processJsonRecord;
     private parseSingleMatch;
+    /**
+     * Estimate how many files ast-grep processed using stderr hints and match data.
+     */
     private extractFilesScanned;
     private countFilesInPaths;
     private countFilesInDirectory;
+    /**
+     * Describe the MCP tool schema exposed to clients.
+     */
     static getSchema(): {
         name: string;
         description: string;

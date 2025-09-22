@@ -1,4 +1,7 @@
 import { z } from 'zod';
+/**
+ * Schema describing the workspace configuration persisted on disk.
+ */
 export declare const WorkspaceConfigSchema: z.ZodObject<{
     root: z.ZodString;
     allowedPaths: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -15,6 +18,9 @@ export declare const WorkspaceConfigSchema: z.ZodObject<{
     blockedPaths?: string[] | undefined;
     maxDepth?: number | undefined;
 }>;
+/**
+ * Schema for ast_search tool input parameters.
+ */
 export declare const SearchParamsSchema: z.ZodObject<{
     pattern: z.ZodString;
     paths: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -77,6 +83,9 @@ export declare const SearchParamsSchema: z.ZodObject<{
     threads?: number | undefined;
 }>;
 export type SearchParams = z.infer<typeof SearchParamsSchema>;
+/**
+ * Schema for ast_replace tool input parameters.
+ */
 export declare const ReplaceParamsSchema: z.ZodObject<{
     pattern: z.ZodString;
     replacement: z.ZodString;
@@ -139,6 +148,9 @@ export declare const ReplaceParamsSchema: z.ZodObject<{
     interactive?: boolean | undefined;
 }>;
 export type ReplaceParams = z.infer<typeof ReplaceParamsSchema>;
+/**
+ * Schema for ast_scan tool input parameters.
+ */
 export declare const ScanParamsSchema: z.ZodObject<{
     rules: z.ZodOptional<z.ZodString>;
     paths: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -192,6 +204,9 @@ export declare const ScanParamsSchema: z.ZodObject<{
     ruleIds?: string[] | undefined;
 }>;
 export type ScanParams = z.infer<typeof ScanParamsSchema>;
+/**
+ * Schema for ast_rewrite tool input parameters.
+ */
 export declare const RewriteParamsSchema: z.ZodObject<{
     rules: z.ZodString;
     paths: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -209,6 +224,9 @@ export declare const RewriteParamsSchema: z.ZodObject<{
     dryRun?: boolean | undefined;
 }>;
 export type RewriteParams = z.infer<typeof RewriteParamsSchema>;
+/**
+ * Structured result types emitted by ast_search.
+ */
 export declare const SearchMatchSchema: z.ZodObject<{
     file: z.ZodString;
     line: z.ZodNumber;
@@ -446,6 +464,9 @@ export declare const SearchResultSchema: z.ZodObject<{
     };
 }>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
+/**
+ * Structured result types emitted by ast_replace.
+ */
 export declare const ReplaceChangeSchema: z.ZodObject<{
     file: z.ZodString;
     matches: z.ZodNumber;
@@ -610,6 +631,9 @@ export declare const ReplaceResultSchema: z.ZodObject<{
     }[];
 }>;
 export type ReplaceResult = z.infer<typeof ReplaceResultSchema>;
+/**
+ * Structured result types emitted by ast_scan.
+ */
 export declare const ScanFindingSchema: z.ZodObject<{
     ruleId: z.ZodString;
     severity: z.ZodString;
@@ -819,6 +843,9 @@ export declare const ScanResultSchema: z.ZodObject<{
     }[];
 }>;
 export type ScanResult = z.infer<typeof ScanResultSchema>;
+/**
+ * Schema for ast_run_rule rule construction parameters.
+ */
 export declare const RuleBuilderWhereClauseSchema: z.ZodObject<{
     metavariable: z.ZodString;
     regex: z.ZodOptional<z.ZodString>;
@@ -867,7 +894,6 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }>, "many">>;
-    smartPatterns: z.ZodOptional<z.ZodDefault<z.ZodBoolean>>;
     fix: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     pattern: string;
@@ -887,7 +913,6 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
-    smartPatterns?: boolean | undefined;
 }, {
     pattern: string;
     language: string;
@@ -906,7 +931,6 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
-    smartPatterns?: boolean | undefined;
 }>;
 export type RuleBuilderParams = z.infer<typeof RuleBuilderParamsSchema>;
 export declare const RuleBuilderResultSchema: z.ZodObject<{
@@ -920,6 +944,9 @@ export declare const RuleBuilderResultSchema: z.ZodObject<{
     yaml: string;
 }>;
 export type RuleBuilderResult = z.infer<typeof RuleBuilderResultSchema>;
+/**
+ * Combined schema merging rule builder and scan parameters for ast_run_rule.
+ */
 export declare const RunRuleParamsSchema: z.ZodObject<{
     id: z.ZodString;
     language: z.ZodString;
@@ -948,7 +975,6 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }>, "many">>;
-    smartPatterns: z.ZodOptional<z.ZodDefault<z.ZodBoolean>>;
     fix: z.ZodOptional<z.ZodString>;
 } & {
     paths: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -999,7 +1025,6 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
-    smartPatterns?: boolean | undefined;
     saveTo?: string | undefined;
 }, {
     pattern: string;
@@ -1033,7 +1058,6 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
-    smartPatterns?: boolean | undefined;
     saveTo?: string | undefined;
 }>;
 export type RunRuleParams = z.infer<typeof RunRuleParamsSchema>;

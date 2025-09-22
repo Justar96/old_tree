@@ -164,26 +164,6 @@ export class RunRuleTool {
                 throw new ValidationError(`Invalid rule parameters: ${ruleValidation.errors.join(', ')}`);
             }
             const rule = ruleValidation.sanitized;
-            // QA FIX: Enhanced pattern validation with reliability assessment
-            const enhancedValidation = this.patternValidator.validatePattern(rule.pattern, rule.language, { type: 'rule', id: rule.id });
-            if (!enhancedValidation.valid) {
-                throw new ValidationError(`Enhanced pattern validation failed: ${enhancedValidation.errors.join(', ')}`);
-            }
-            // Log pattern reliability warnings
-            if (enhancedValidation.warnings.length > 0) {
-                console.warn('⚠️  Pattern reliability warnings:', enhancedValidation.warnings);
-            }
-            // QA FIX: Validate nested/contextual patterns if present
-            let nestedValidation;
-            if (rule.insidePattern || rule.hasPattern || rule.notPattern) {
-                nestedValidation = this.patternValidator.validateNestedPattern(rule.pattern, rule.insidePattern, rule.hasPattern, rule.notPattern, rule.language);
-                if (!nestedValidation.valid) {
-                    throw new ValidationError(`Nested pattern validation failed: ${nestedValidation.errors.join(', ')}`);
-                }
-                if (nestedValidation.warnings.length > 0) {
-                    console.warn('⚠️  Contextual pattern warnings:', nestedValidation.warnings);
-                }
-            }
             // Build YAML
             const yaml = this.buildYaml(rule);
             // Build scan params and validate
@@ -237,17 +217,7 @@ export class RunRuleTool {
                 savedPath = validation.resolvedPath;
             }
             const scanResult = await this.scanTool.execute(scanValidation.sanitized);
-            // QA FIX: Compile diagnostics
-            const diagnostics = {
-                patternReliabilityScore: enhancedValidation.diagnostics?.reliabilityScore,
-                enhancedValidationApplied: true,
-                warnings: [
-                    ...(enhancedValidation.warnings || []),
-                    ...(nestedValidation?.warnings || []),
-                    ...(enhancedValidation.diagnostics?.issues || [])
-                ]
-            };
-            return { yaml, scan: scanResult, savedPath, diagnostics };
+            return { yaml, scan: scanResult, savedPath };
         }
         catch (error) {
             if (error instanceof ValidationError) {

@@ -1,5 +1,4 @@
 import { WorkspaceManager } from '../core/workspace-manager.js';
-import { ValidationDiagnostics } from '../types/errors.js';
 import { ScanResult, RunRuleParams } from '../types/schemas.js';
 import { ScanTool } from './scan.js';
 export declare class RunRuleTool {
@@ -174,7 +173,6 @@ export declare class RunRuleTool {
         yaml: string;
         scan: ScanResult;
         savedPath?: string;
-        diagnostics?: ValidationDiagnostics;
     }>;
     private buildYaml;
 }

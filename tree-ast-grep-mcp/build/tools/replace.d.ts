@@ -1,16 +1,28 @@
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
 import { ReplaceParams, ReplaceResult } from '../types/schemas.js';
+/**
+ * Performs ast-grep replacements and writes changes within the workspace.
+ */
 export declare class ReplaceTool {
     private binaryManager;
     private validator;
     private workspaceManager;
+    /**
+     * Initialize the tool with binary execution and workspace services.
+     */
     constructor(binaryManager: AstGrepBinaryManager, workspaceManager: WorkspaceManager);
+    /**
+     * Run ast-grep replace with validated parameters and return change metadata.
+     */
     execute(params: ReplaceParams): Promise<ReplaceResult>;
     private createBackups;
     private buildReplaceArgs;
     private parseReplaceResults;
     private parseDiffOutput;
+    /**
+     * Describe the MCP schema for the replace tool.
+     */
     static getSchema(): {
         name: string;
         description: string;

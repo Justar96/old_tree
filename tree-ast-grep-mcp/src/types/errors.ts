@@ -1,5 +1,8 @@
 // Custom error types for the MCP server
-/**`r`n * Base error type that carries a machine readable code and optional context.`r`n */`r`nexport abstract class AstGrepMCPError extends Error {
+/**
+ * Base error type that carries a machine readable code and optional context.
+ */
+export abstract class AstGrepMCPError extends Error {
   abstract readonly code: string;
   abstract readonly recoverable: boolean;
 
@@ -9,17 +12,26 @@
   }
 }
 
-/**`r`n * Signals invalid parameters or user input that callers can correct.`r`n */`r`nexport class ValidationError extends AstGrepMCPError {
+/**
+ * Signals invalid parameters or user input that callers can correct.
+ */
+export class ValidationError extends AstGrepMCPError {
   readonly code = 'VALIDATION_ERROR';
   readonly recoverable = true;
 }
 
-/**`r`n * Indicates binary discovery or execution failures that require operator action.`r`n */`r`nexport class BinaryError extends AstGrepMCPError {
+/**
+ * Indicates binary discovery or execution failures that require operator action.
+ */
+export class BinaryError extends AstGrepMCPError {
   readonly code = 'BINARY_ERROR';
   readonly recoverable = false;
 }
 
-/**`r`n * Raised when a request violates workspace security constraints.`r`n */`r`nexport class SecurityError extends AstGrepMCPError {
+/**
+ * Raised when a request violates workspace security constraints.
+ */
+export class SecurityError extends AstGrepMCPError {
   readonly code = 'SECURITY_ERROR';
   readonly recoverable = false;
 }
@@ -34,7 +46,10 @@ export class FileSystemError extends AstGrepMCPError {
   readonly recoverable = true;
 }
 
-/**`r`n * Represents ast-grep runtime failures that may be transient or recoverable.`r`n */`r`nexport class ExecutionError extends AstGrepMCPError {
+/**
+ * Represents ast-grep runtime failures that may be transient or recoverable.
+ */
+export class ExecutionError extends AstGrepMCPError {
   readonly code = 'EXECUTION_ERROR';
   readonly recoverable = true;
 }
