@@ -10,14 +10,14 @@ export interface WorkspaceConfig {
   maxDepth: number;
 }
 
-export class WorkspaceManager {
+/**`r`n * Detects and manages workspace boundaries used by MCP tools.`r`n */`r`nexport class WorkspaceManager {
   private config: WorkspaceConfig;
 
-  constructor(explicitRoot?: string) {
+  /**`r`n   * Build workspace configuration from an optional explicit root.`r`n   */`r`n  constructor(explicitRoot?: string) {
     this.config = this.detectWorkspace(explicitRoot);
   }
 
-  private detectWorkspace(explicitRoot?: string): WorkspaceConfig {
+  /**`r`n   * Determine the effective workspace root and allowed path boundaries.`r`n   */`r`n  private detectWorkspace(explicitRoot?: string): WorkspaceConfig {
     let workspaceRoot: string;
 
     if (explicitRoot) {
@@ -155,7 +155,7 @@ export class WorkspaceManager {
     return { ...this.config };
   }
 
-  getWorkspaceRoot(): string {
+  /**`r`n   * Expose the root directory used for workspace relative operations.`r`n   */`r`n  getWorkspaceRoot(): string {
     return this.config.root;
   }
 

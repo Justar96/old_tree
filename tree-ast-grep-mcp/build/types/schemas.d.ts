@@ -867,6 +867,7 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }>, "many">>;
+    smartPatterns: z.ZodOptional<z.ZodDefault<z.ZodBoolean>>;
     fix: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     pattern: string;
@@ -886,6 +887,7 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    smartPatterns?: boolean | undefined;
 }, {
     pattern: string;
     language: string;
@@ -904,6 +906,7 @@ export declare const RuleBuilderParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    smartPatterns?: boolean | undefined;
 }>;
 export type RuleBuilderParams = z.infer<typeof RuleBuilderParamsSchema>;
 export declare const RuleBuilderResultSchema: z.ZodObject<{
@@ -945,6 +948,7 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }>, "many">>;
+    smartPatterns: z.ZodOptional<z.ZodDefault<z.ZodBoolean>>;
     fix: z.ZodOptional<z.ZodString>;
 } & {
     paths: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -995,6 +999,7 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    smartPatterns?: boolean | undefined;
     saveTo?: string | undefined;
 }, {
     pattern: string;
@@ -1028,6 +1033,7 @@ export declare const RunRuleParamsSchema: z.ZodObject<{
         notRegex?: string | undefined;
         equals?: string | undefined;
     }[] | undefined;
+    smartPatterns?: boolean | undefined;
     saveTo?: string | undefined;
 }>;
 export type RunRuleParams = z.infer<typeof RunRuleParamsSchema>;

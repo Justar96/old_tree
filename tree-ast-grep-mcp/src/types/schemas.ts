@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-// Base workspace configuration
+/**
+ * Schema describing the workspace configuration persisted on disk.
+ */
 export const WorkspaceConfigSchema = z.object({
   root: z.string(),
   allowedPaths: z.array(z.string()).optional(),
@@ -8,7 +10,9 @@ export const WorkspaceConfigSchema = z.object({
   maxDepth: z.number().min(1).max(20).default(10),
 });
 
-// Search tool parameters
+/**
+ * Schema for ast_search tool input parameters.
+ */
 export const SearchParamsSchema = z.object({
   pattern: z.string().min(1, 'Pattern cannot be empty'),
   paths: z.array(z.string()).optional(),
@@ -33,7 +37,9 @@ export const SearchParamsSchema = z.object({
 
 export type SearchParams = z.infer<typeof SearchParamsSchema>;
 
-// Replace tool parameters
+/**
+ * Schema for ast_replace tool input parameters.
+ */
 export const ReplaceParamsSchema = z.object({
   pattern: z.string().min(1, 'Pattern cannot be empty'),
   replacement: z.string(),
@@ -43,7 +49,7 @@ export const ReplaceParamsSchema = z.object({
   interactive: z.boolean().default(false),
   include: z.array(z.string()).optional(),
   exclude: z.array(z.string()).optional(),
-  // New options aligned with ast_search
+  // Additional options aligned with ast_search tool signature
   timeoutMs: z.number().min(1000).max(180000).optional(),
   relativePaths: z.boolean().default(false).optional(),
   jsonStyle: z.enum(['stream', 'pretty', 'compact']).default('stream').optional(),
@@ -59,7 +65,9 @@ export const ReplaceParamsSchema = z.object({
 
 export type ReplaceParams = z.infer<typeof ReplaceParamsSchema>;
 
-// Scan tool parameters
+/**
+ * Schema for ast_scan tool input parameters.
+ */
 export const ScanParamsSchema = z.object({
   rules: z.string().optional(),
   paths: z.array(z.string()).optional(),
@@ -68,7 +76,7 @@ export const ScanParamsSchema = z.object({
   ruleIds: z.array(z.string()).optional(),
   include: z.array(z.string()).optional(),
   exclude: z.array(z.string()).optional(),
-  // Advanced options (parity with search/replace)
+  // Additional options matching ast_search and ast_replace capabilities
   timeoutMs: z.number().min(1000).max(180000).optional(),
   relativePaths: z.boolean().default(false).optional(),
   jsonStyle: z.enum(['stream', 'pretty', 'compact']).default('stream').optional(),
@@ -82,7 +90,9 @@ export const ScanParamsSchema = z.object({
 
 export type ScanParams = z.infer<typeof ScanParamsSchema>;
 
-// Rewrite tool parameters
+/**
+ * Schema for ast_rewrite tool input parameters.
+ */
 export const RewriteParamsSchema = z.object({
   rules: z.string().min(1, 'Rules cannot be empty'),
   paths: z.array(z.string()).optional(),
@@ -92,7 +102,9 @@ export const RewriteParamsSchema = z.object({
 
 export type RewriteParams = z.infer<typeof RewriteParamsSchema>;
 
-// Search result types
+/**
+ * Structured result types emitted by ast_search.
+ */
 export const SearchMatchSchema = z.object({
   file: z.string(),
   line: z.number(),
@@ -127,7 +139,9 @@ export const SearchResultSchema = z.object({
 
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 
-// Replace result types
+/**
+ * Structured result types emitted by ast_replace.
+ */
 export const ReplaceChangeSchema = z.object({
   file: z.string(),
   matches: z.number(),
@@ -154,7 +168,9 @@ export const ReplaceResultSchema = z.object({
 
 export type ReplaceResult = z.infer<typeof ReplaceResultSchema>;
 
-// Scan result types
+/**
+ * Structured result types emitted by ast_scan.
+ */
 export const ScanFindingSchema = z.object({
   ruleId: z.string(),
   severity: z.string(),
@@ -187,7 +203,9 @@ export const ScanResultSchema = z.object({
 
 export type ScanResult = z.infer<typeof ScanResultSchema>;
 
-// Rule builder parameters
+/**
+ * Schema for ast_run_rule rule construction parameters.
+ */
 export const RuleBuilderWhereClauseSchema = z.object({
   metavariable: z.string(),
   regex: z.string().optional(),
@@ -219,7 +237,9 @@ export const RuleBuilderResultSchema = z.object({
 
 export type RuleBuilderResult = z.infer<typeof RuleBuilderResultSchema>;
 
-// Combined params for ast_run_rule (rule + scan params)
+/**
+ * Combined schema merging rule builder and scan parameters for ast_run_rule.
+ */
 export const RunRuleParamsSchema = RuleBuilderParamsSchema.extend({
   // Scan-specific fields
   paths: z.array(z.string()).optional(),
@@ -241,3 +261,6 @@ export const RunRuleParamsSchema = RuleBuilderParamsSchema.extend({
 });
 
 export type RunRuleParams = z.infer<typeof RunRuleParamsSchema>;
+
+
+

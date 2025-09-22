@@ -8,13 +8,7 @@
       "Bash(node:*)",
       "Bash(npm run build:*)",
       "Bash(ast-grep run:*)",
-      "Bash(ast-grep scan:*)",
-      "Bash(time ast-grep scan --rule final-smart-solution.yml test-python-functions.py --json)",
-      "Bash(find:*)",
-      "WebFetch(domain:docs.codemod.com)",
-      "WebFetch(domain:codemod.com)",
-      "WebSearch",
-      "Bash(git checkout:*)"
+      "Bash(ast-grep scan:*)"
     ],
     "deny": [],
     "ask": []

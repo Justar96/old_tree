@@ -9,7 +9,13 @@ import { AstGrepErrorTranslator } from '../core/error-handler.js';
 import { ValidationError, ExecutionError } from '../types/errors.js';
 import { ScanParams, ScanResult } from '../types/schemas.js';
 
+/**
+ * Executes ast-grep scan operations and aggregates diagnostics for MCP clients.
+ */
 export class ScanTool extends BaseTool {
+  /**
+   * Initialize the scan tool with workspace context and binary execution support.
+   */
   constructor(
     binaryManager: AstGrepBinaryManager,
     workspaceManager: WorkspaceManager
@@ -17,6 +23,9 @@ export class ScanTool extends BaseTool {
     super(workspaceManager, binaryManager);
   }
 
+  /**
+   * Run ast-grep scan with validation and enrich the output with summary metrics.
+   */
   async execute(params: ScanParams): Promise<ScanResult> {
     // Validate parameters
     const validation = this.validator.validateScanParams(params);
@@ -414,6 +423,9 @@ export class ScanTool extends BaseTool {
   }
 
   // Get tool schema for MCP
+  /**
+   * Describe the MCP schema for the scan tool.
+   */
   static getSchema() {
     return {
       name: 'ast_scan',
@@ -423,7 +435,7 @@ export class ScanTool extends BaseTool {
         properties: {
           rules: {
             type: 'string',
-            description: 'Path to YAML rules file (.yml/.yaml) or inline YAML rules content. Rules define patterns to find and their severity levels. Example: "rules.yml" or inline YAML with id, message, severity, language, and rule.pattern fields.'
+            description: 'Path to YAML rules file (.yml/.yaml) or inline YAML rules content. ADVANCED RULE COMPOSITION: Use "all:", "any:", "not:" for complex logic, "inside:", "has:" for context, "constraints:" for metavariable filtering. Example: "rules.yml" or inline YAML: "rules:\\n  - id: no-console\\n    rule:\\n      pattern: console.log($_)\\n    message: Avoid console.log\\n    severity: warning\\n    language: javascript"'
           },
           paths: {
             type: 'array',
@@ -461,7 +473,7 @@ export class ScanTool extends BaseTool {
             type: 'number',
             minimum: 1000,
             maximum: 180000,
-            description: 'Timeout for ast-grep scan in milliseconds (default: 30000)'
+            description: 'Timeout for ast-grep scan in milliseconds. Default: 60000 (60 seconds). Higher limit for complex rule analysis.'
           },
           relativePaths: {
             type: 'boolean',
@@ -503,3 +515,4 @@ export class ScanTool extends BaseTool {
     };
   }
 }
+

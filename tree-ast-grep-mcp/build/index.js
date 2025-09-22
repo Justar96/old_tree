@@ -9,7 +9,9 @@ import { ReplaceTool } from './tools/replace.js';
 import { ScanTool } from './tools/scan.js';
 import { RunRuleTool } from './tools/rule-builder.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
-// Parse command line arguments for installation options
+/**
+ * Parse CLI arguments and environment variables into installation options.
+ */
 function parseArgs() {
     const args = process.argv.slice(2);
     const options = {};
@@ -37,6 +39,9 @@ function parseArgs() {
     options.cacheDir = options.cacheDir || process.env.AST_GREP_CACHE_DIR;
     return options;
 }
+/**
+ * Print usage information for installing and configuring the MCP server.
+ */
 function printHelp() {
     console.log(`
 tree-ast-grep MCP Server - Installation Options:
@@ -77,6 +82,9 @@ MCP CONFIGURATION:
   }
 `);
 }
+/**
+ * Entry point for launching the MCP server and registering available tools.
+ */
 async function main() {
     try {
         // Parse installation options

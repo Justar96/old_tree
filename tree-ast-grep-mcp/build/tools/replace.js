@@ -316,7 +316,7 @@ export class ReplaceTool {
                     interactive: {
                         type: 'boolean',
                         default: false,
-                        description: 'Require confirmation for each change (currently treated as dry-run)'
+                        description: 'INTERACTIVE MODE: When true (and dryRun=false), ast-grep will prompt for confirmation before each replacement. Allows selective application of changes. Only works with actual replacements, not previews.'
                     },
                     include: {
                         type: 'array',
@@ -331,8 +331,8 @@ export class ReplaceTool {
                     timeoutMs: {
                         type: 'number',
                         minimum: 1000,
-                        maximum: 120000,
-                        description: 'Timeout for ast-grep execution in milliseconds (default: 30000)'
+                        maximum: 180000,
+                        description: 'Timeout for ast-grep execution in milliseconds. Default: 30000 (30s) for dry-run, 60000 (60s) for actual replacements.'
                     },
                     relativePaths: {
                         type: 'boolean',

@@ -7,13 +7,22 @@ export interface ResolvedPaths {
   errors: string[];
 }
 
+/**
+ * Resolves user provided paths against the workspace and validates boundaries.
+ */
 export class PathResolver {
   private workspaceRoot: string;
 
+  /**
+   * Persist the absolute workspace root used for subsequent checks.
+   */
   constructor(workspaceRoot: string) {
     this.workspaceRoot = path.resolve(workspaceRoot);
   }
 
+  /**
+   * Resolve and validate paths asynchronously while collecting detailed errors.
+   */
   async resolvePaths(inputPaths?: string[]): Promise<ResolvedPaths> {
     const resolved: ResolvedPaths = {
       workspace: this.workspaceRoot,
@@ -88,6 +97,9 @@ export class PathResolver {
 
   /**
    * Synchronous path resolution for cases where file existence isn't critical
+   */
+  /**
+   * Resolve paths synchronously for tooling that cannot await filesystem results.
    */
   resolvePathsSync(inputPaths?: string[]): ResolvedPaths {
     const resolved: ResolvedPaths = {
@@ -210,7 +222,15 @@ export class PathResolver {
     return suggestions.length > 0 ? suggestions.join(' ') : 'Check path spelling and permissions.';
   }
 
+  /**
+   * Expose the normalized workspace root path.
+   */
   getWorkspaceRoot(): string {
     return this.workspaceRoot;
   }
 }
+
+
+
+
+

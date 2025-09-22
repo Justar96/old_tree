@@ -3,15 +3,18 @@ import * as path from 'path';
 import { ValidationResult, ValidationError, SecurityError } from '../types/errors.js';
 import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderParams } from '../types/schemas.js';
 
-export class ParameterValidator {
+/**`r`n * Validates tool parameters against workspace boundaries and security policies.`r`n */`r`nexport class ParameterValidator {
   private workspaceRoot: string;
   private blockedPaths: string[];
 
-  constructor(workspaceRoot: string) {
+  /**`r`n   * Persist the workspace root and populate security guardrails.`r`n   */`r`n  constructor(workspaceRoot: string) {
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.blockedPaths = this.getBlockedPaths();
   }
 
+  /**
+   * Enumerate filesystem locations that tools must never modify.
+   */
   private getBlockedPaths(): string[] {
     const systemPaths = [
       '/etc', '/bin', '/usr', '/sys', '/proc',           // Unix system dirs
@@ -25,7 +28,7 @@ export class ParameterValidator {
   }
 
   // Validate search parameters
-  validateSearchParams(params: any): ValidationResult {
+  /**`r`n   * Validate search tool parameters and sanitize defaults.`r`n   */`r`n  validateSearchParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate pattern
@@ -159,7 +162,7 @@ export class ParameterValidator {
   }
 
   // Validate replace parameters
-  validateReplaceParams(params: any): ValidationResult {
+  /**`r`n   * Validate replace tool parameters and enforce workspace boundaries.`r`n   */`r`n  validateReplaceParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate pattern
@@ -273,7 +276,7 @@ export class ParameterValidator {
   }
 
   // Validate scan parameters
-  validateScanParams(params: any): ValidationResult {
+  /**`r`n   * Validate scan tool parameters and normalize rule execution options.`r`n   */`r`n  validateScanParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate format
@@ -358,7 +361,7 @@ export class ParameterValidator {
   }
 
   // Validate rewrite parameters
-  validateRewriteParams(params: any): ValidationResult {
+  /**`r`n   * Validate rewrite tool parameters including pattern and rewrite rules.`r`n   */`r`n  validateRewriteParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     // Validate rules
@@ -388,6 +391,9 @@ export class ParameterValidator {
   }
 
   // Validate paths for security
+  /**
+   * Ensure provided paths stay within the workspace and are accessible.
+   */
   private validatePaths(paths: string[]): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
     const sanitizedPaths: string[] = [];
@@ -470,6 +476,9 @@ export class ParameterValidator {
     return result;
   }
 
+  /**
+   * Estimate file counts by walking directories with safeguards.
+   */
   private async countFilesRecursive(dir: string): Promise<number> {
     let count = 0;
     try {
@@ -497,6 +506,9 @@ export class ParameterValidator {
   }
 
   // Extract metavariables from AST pattern
+  /**
+   * Identify single and multi node metavariables within a pattern.
+   */
   private extractMetavariables(pattern: string): { single: string[], multi: string[] } {
     const single: string[] = [];
     const multi: string[] = [];
@@ -513,6 +525,9 @@ export class ParameterValidator {
   }
 
   // Validate AST pattern syntax
+  /**
+   * Validate that the ast-grep pattern is syntactically correct for the language.
+   */
   private validateAstPattern(pattern: string, language?: string): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
@@ -565,6 +580,9 @@ export class ParameterValidator {
   }
 
   // Validate pattern-replacement consistency
+  /**
+   * Ensure replacement templates match the captured metavariables.
+   */
   private validatePatternReplacementConsistency(pattern: string, replacement: string): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
@@ -591,6 +609,9 @@ export class ParameterValidator {
   }
 
   // Check if pattern requires language hint
+  /**
+   * Determine if a pattern needs an explicit language selection.
+   */
   private requiresLanguageHint(pattern: string): boolean {
     // Patterns that typically need language context
     const languageSpecificKeywords = [
@@ -605,6 +626,9 @@ export class ParameterValidator {
   }
 
   // Language-specific pattern validation
+  /**
+   * Run language specific validation rules for advanced patterns.
+   */
   private validateLanguageSpecificPattern(pattern: string, language: string): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
@@ -645,6 +669,9 @@ export class ParameterValidator {
   }
 
   // Get default exclude patterns
+  /**
+   * Provide default exclude globs to avoid scanning generated content.
+   */
   private getDefaultExcludes(): string[] {
     return [
       'node_modules/**',
@@ -661,6 +688,9 @@ export class ParameterValidator {
   }
 
   // Detect language from pattern content
+  /**
+   * Infer a probable language from a pattern when none is specified.
+   */
   private detectLanguageFromPattern(pattern: string): string | undefined {
     // JavaScript/TypeScript patterns
     if (pattern.match(/\b(function|const|let|var|import|export|class|interface|type)\b/)) {
@@ -770,7 +800,7 @@ export class ParameterValidator {
   }
 
   // Validate rule builder parameters
-  validateRuleBuilderParams(params: any): ValidationResult {
+  /**`r`n   * Validate rule builder inputs before generating or executing ast-grep rules.`r`n   */`r`n  validateRuleBuilderParams(params: any): ValidationResult {
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
     if (!params || typeof params !== 'object') {
@@ -823,3 +853,7 @@ export class ParameterValidator {
     return result;
   }
 }
+
+
+
+

@@ -1,6 +1,12 @@
 import { AstGrepMCPError, ValidationError, SecurityError, ExecutionError, BinaryError } from '../types/errors.js';
 
+/**
+ * Normalizes ast-grep command failures into actionable MCP diagnostics.
+ */
 export class AstGrepErrorTranslator {
+  /**
+   * Map raw stderr output to a concise human readable message.
+   */
   static translateCliError(stderr: string, context: any): string {
     // File not found errors
     if (stderr.includes('The system cannot find the file specified') ||
@@ -130,6 +136,9 @@ export class AstGrepErrorTranslator {
     return `ast-grep execution failed: ${sanitizedError}${contextInfo}${langInfo}`;
   }
 
+  /**
+   * Build an MCP error object with contextual remediation guidance.
+   */
   static createUserFriendlyError(error: Error, context: any): AstGrepMCPError {
     const errorMessage = error.message.toLowerCase();
 
@@ -179,6 +188,9 @@ export class AstGrepErrorTranslator {
     );
   }
 
+  /**
+   * Format an MCP error into a multi-line troubleshooting message.
+   */
   static formatContextualError(error: AstGrepMCPError): string {
     let message = error.message;
 

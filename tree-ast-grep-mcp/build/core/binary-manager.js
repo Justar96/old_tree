@@ -5,13 +5,22 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { BinaryError } from '../types/errors.js';
 const execFileAsync = promisify(execFile);
+/**
+ * Manages ast-grep binary discovery, installation, validation, and execution.
+ */
 export class AstGrepBinaryManager {
     binaryPath = null;
     isInitialized = false;
     options;
+    /**
+     * Create a manager with optional installation directives.
+     */
     constructor(options = {}) {
         this.options = options;
     }
+    /**
+     * Resolve and prepare an ast-grep binary for subsequent tool execution.
+     */
     async initialize() {
         if (this.isInitialized)
             return;
@@ -34,6 +43,9 @@ export class AstGrepBinaryManager {
         // 4. Fallback to system binary
         await this.useSystemBinary();
     }
+    /**
+     * Validate and register a caller supplied binary path without downloading.
+     */
     async useCustomBinary(customPath) {
         if (await this.testBinary(customPath)) {
             this.binaryPath = customPath;
@@ -43,6 +55,9 @@ export class AstGrepBinaryManager {
             throw new BinaryError(`Custom binary path "${customPath}" is not valid`);
         }
     }
+    /**
+     * Locate ast-grep on PATH and ensure it can be executed.
+     */
     async useSystemBinary() {
         const systemPath = await this.findBinaryInPath();
         if (systemPath && await this.testBinary(systemPath)) {
@@ -53,6 +68,9 @@ export class AstGrepBinaryManager {
             throw new BinaryError('ast-grep binary not found in PATH. Please install ast-grep or use --auto-install option.');
         }
     }
+    /**
+     * Download and cache a platform specific ast-grep binary when requested.
+     */
     async installPlatformBinary() {
         const platform = this.options.platform === 'auto' ?
             process.platform : this.options.platform || process.platform;
@@ -119,6 +137,9 @@ export class AstGrepBinaryManager {
             }
         }
     }
+    /**
+     * Search the environment PATH for an ast-grep executable.
+     */
     async findBinaryInPath() {
         const paths = process.env.PATH?.split(path.delimiter) || [];
         const binaryNames = process.platform === 'win32' ?
@@ -133,6 +154,9 @@ export class AstGrepBinaryManager {
         }
         return null;
     }
+    /**
+     * Run --version against the provided binary to confirm it is usable.
+     */
     async testBinary(binaryPath) {
         try {
             if (binaryPath.endsWith('.ps1')) {
@@ -153,6 +177,9 @@ export class AstGrepBinaryManager {
             return false;
         }
     }
+    /**
+     * Determine whether a file exists without throwing on access errors.
+     */
     async fileExists(filePath) {
         try {
             await fs.access(filePath);
@@ -162,10 +189,16 @@ export class AstGrepBinaryManager {
             return false;
         }
     }
+    /**
+     * Build the expected ast-grep file name for the given platform and architecture.
+     */
     getBinaryName(platform, arch) {
         const extension = platform === 'win32' ? '.exe' : '';
         return `ast-grep-${platform}-${arch}${extension}`;
     }
+    /**
+     * Download, extract, and validate a platform specific ast-grep binary.
+     */
     async downloadBinary(platform, arch, targetPath) {
         const version = '0.39.5'; // Latest version
         const baseUrl = `https://github.com/ast-grep/ast-grep/releases/download/${version}`;
@@ -214,6 +247,9 @@ export class AstGrepBinaryManager {
                 `3. Set AST_GREP_BINARY_PATH environment variable`);
         }
     }
+    /**
+     * Download a file with retry logic and exponential backoff.
+     */
     async downloadWithRetry(url, outputPath, maxRetries) {
         let lastError = null;
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -235,6 +271,9 @@ export class AstGrepBinaryManager {
         }
         throw lastError || new Error('Download failed after all retries');
     }
+    /**
+     * Stream a remote file to disk using the built in fetch implementation.
+     */
     async downloadFile(url, outputPath) {
         // Use Node.js built-in fetch (available in Node 18+)
         const response = await fetch(url);
@@ -271,6 +310,9 @@ export class AstGrepBinaryManager {
             await fileStream.close();
         }
     }
+    /**
+     * Extract the ast-grep binary from an archive and stage the executable.
+     */
     async extractBinary(zipPath, targetPath, platform) {
         try {
             const extractDir = path.join(path.dirname(targetPath), 'extract');
@@ -307,6 +349,9 @@ export class AstGrepBinaryManager {
             throw new Error(`Failed to extract binary: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
+    /**
+     * Walk a directory tree and collect file paths for archive extraction.
+     */
     async findFilesRecursively(dir) {
         const files = [];
         async function scan(currentDir) {
@@ -325,6 +370,9 @@ export class AstGrepBinaryManager {
         await scan(dir);
         return files;
     }
+    /**
+     * Remove temporary files created during download or extraction.
+     */
     async cleanup(paths) {
         for (const filePath of paths) {
             try {
@@ -335,9 +383,15 @@ export class AstGrepBinaryManager {
             }
         }
     }
+    /**
+     * Return the resolved ast-grep binary path if initialization succeeded.
+     */
     getBinaryPath() {
         return this.binaryPath;
     }
+    /**
+     * Execute ast-grep with the provided arguments and optional stdin payload.
+     */
     async executeAstGrep(args, options = {}) {
         if (!this.binaryPath) {
             throw new BinaryError('Binary not initialized');
@@ -406,6 +460,9 @@ export class AstGrepBinaryManager {
             throw new Error(`ast-grep execution failed: ${error.message}`);
         }
     }
+    /**
+     * Determine the appropriate command wrapper for invoking the binary on each platform.
+     */
     getExecutionCommand(binaryPath, args) {
         if (binaryPath.endsWith('.ps1')) {
             return {

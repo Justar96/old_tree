@@ -180,6 +180,7 @@ export const RuleBuilderParamsSchema = z.object({
     hasPattern: z.string().optional(),
     notPattern: z.string().optional(),
     where: z.array(RuleBuilderWhereClauseSchema).optional(),
+    smartPatterns: z.boolean().default(false).optional(),
     fix: z.string().optional(),
 });
 export const RuleBuilderResultSchema = z.object({

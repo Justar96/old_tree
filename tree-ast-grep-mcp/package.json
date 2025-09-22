@@ -1,6 +1,6 @@
 {
   "name": "tree-ast-grep-mcp",
-  "version": "1.0.10",
+  "version": "1.0.12",
   "description": "AST-aware code search and manipulation MCP server using ast-grep",
   "main": "./build/index.js",
   "bin": {

@@ -28,11 +28,29 @@ export declare class ExecutionError extends AstGrepMCPError {
     readonly code = "EXECUTION_ERROR";
     readonly recoverable = true;
 }
+export interface ValidationDiagnostics {
+    patternType?: string;
+    metavariables?: {
+        single: string[];
+        multi: string[];
+        problematic: string[];
+        reliable: string[];
+    };
+    languageCompatibility?: string[];
+    complexity?: 'simple' | 'moderate' | 'complex' | 'very_complex' | 'nested';
+    reliabilityScore?: number;
+    patternReliabilityScore?: number;
+    enhancedValidationApplied?: boolean;
+    issues?: string[];
+    warnings?: string[];
+    patterns?: any;
+}
 export interface ValidationResult {
     valid: boolean;
     errors: string[];
     warnings: string[];
     sanitized?: any;
+    diagnostics?: ValidationDiagnostics;
 }
 export interface InstallationOptions {
     platform?: 'win32' | 'darwin' | 'linux' | 'auto';

@@ -13,7 +13,9 @@ import { RunRuleTool } from './tools/rule-builder.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
 import { SearchParams, ReplaceParams, ScanParams, RunRuleParams } from './types/schemas.js';
 
-// Parse command line arguments for installation options
+/**
+ * Parse CLI arguments and environment variables into installation options.
+ */
 function parseArgs(): InstallationOptions {
   const args = process.argv.slice(2);
   const options: InstallationOptions = {};
@@ -42,6 +44,9 @@ function parseArgs(): InstallationOptions {
   return options;
 }
 
+/**
+ * Print usage information for installing and configuring the MCP server.
+ */
 function printHelp(): void {
   console.log(`
 tree-ast-grep MCP Server - Installation Options:
@@ -83,6 +88,9 @@ MCP CONFIGURATION:
 `);
 }
 
+/**
+ * Entry point for launching the MCP server and registering available tools.
+ */
 async function main(): Promise<void> {
   try {
     // Parse installation options
@@ -245,3 +253,5 @@ main().catch((error) => {
   console.error('Unhandled error:', error);
   process.exit(1);
 });
+
+

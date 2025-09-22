@@ -6,11 +6,17 @@ import { WorkspaceManager } from '../core/workspace-manager.js';
 import { ValidationError, ExecutionError, SecurityError } from '../types/errors.js';
 import { ReplaceParams, ReplaceResult } from '../types/schemas.js';
 
+/**
+ * Performs ast-grep replacements and writes changes within the workspace.
+ */
 export class ReplaceTool {
   private binaryManager: AstGrepBinaryManager;
   private validator: ParameterValidator;
   private workspaceManager: WorkspaceManager;
 
+  /**
+   * Initialize the tool with binary execution and workspace services.
+   */
   constructor(
     binaryManager: AstGrepBinaryManager,
     workspaceManager: WorkspaceManager
@@ -20,6 +26,9 @@ export class ReplaceTool {
     this.validator = new ParameterValidator(workspaceManager.getWorkspaceRoot());
   }
 
+  /**
+   * Run ast-grep replace with validated parameters and return change metadata.
+   */
   async execute(params: ReplaceParams): Promise<ReplaceResult> {
     // Validate parameters
     const validation = this.validator.validateReplaceParams(params);
@@ -333,6 +342,9 @@ export class ReplaceTool {
   }
 
   // Get tool schema for MCP
+  /**
+   * Describe the MCP schema for the replace tool.
+   */
   static getSchema() {
     return {
       name: 'ast_replace',
@@ -369,7 +381,7 @@ export class ReplaceTool {
           interactive: {
             type: 'boolean',
             default: false,
-            description: 'Require confirmation for each change (currently treated as dry-run)'
+            description: 'INTERACTIVE MODE: When true (and dryRun=false), ast-grep will prompt for confirmation before each replacement. Allows selective application of changes. Only works with actual replacements, not previews.'
           },
           include: {
             type: 'array',
@@ -384,8 +396,8 @@ export class ReplaceTool {
           timeoutMs: {
             type: 'number',
             minimum: 1000,
-            maximum: 120000,
-            description: 'Timeout for ast-grep execution in milliseconds (default: 30000)'
+            maximum: 180000,
+            description: 'Timeout for ast-grep execution in milliseconds. Default: 30000 (30s) for dry-run, 60000 (60s) for actual replacements.'
           },
           relativePaths: {
             type: 'boolean',
@@ -431,3 +443,4 @@ export class ReplaceTool {
     };
   }
 }
+

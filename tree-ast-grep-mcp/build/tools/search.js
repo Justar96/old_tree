@@ -325,7 +325,7 @@ export class SearchTool extends BaseTool {
                 properties: {
                     pattern: {
                         type: 'string',
-                        description: 'AST pattern to search for using ast-grep syntax. Use metavariables: $VAR (single node), $$$ (multi-node), $NAME (capture names). Examples: "console.log($_)" (any console.log call), "function $NAME($ARGS)" (function definitions), "import $WHAT from $WHERE" (import statements), "class $NAME extends $BASE" (class inheritance), "var $NAME" (variable declarations).'
+                        description: 'AST pattern to search for using ast-grep syntax. Use metavariables: $VAR (single node), $$$ (multi-node), $NAME (capture names). LANGUAGE EXAMPLES - JavaScript: "console.log($_)", "function $NAME($ARGS) { $$$ }", "const $NAME = ($ARGS) => $EXPR", "await $PROMISE", "$OBJ.$METHOD($_)". Python: "def $NAME($ARGS): $$$", "class $NAME($BASE): $$$", "import $MODULE", "for $VAR in $ITER: $$$". Java: "public $TYPE $METHOD($ARGS) { $$$ }", "@$ANNOTATION class $NAME { $$$ }", "new $CLASS($ARGS)". Advanced: Use patterns like "if ($COND) { console.log($_) }" for conditional matches.'
                     },
                     code: {
                         type: 'string',
@@ -334,11 +334,11 @@ export class SearchTool extends BaseTool {
                     paths: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'Files/directories to search. IMPORTANT: Use absolute paths for file-based search (e.g., "D:\\path\\to\\file.js"). Relative paths may not resolve correctly due to workspace detection issues. Default: current directory if no paths specified.'
+                        description: 'Files/directories to search. Can use relative paths (e.g., "src/", "lib/*.js") or absolute paths (e.g., "D:\\path\\to\\file.js"). Default: current directory if not specified.'
                     },
                     language: {
                         type: 'string',
-                        description: 'Programming language for pattern matching. Required when using "code" parameter. Common values: "javascript", "typescript", "python", "java", "rust", "go", "cpp". Auto-detected from file extensions if not specified.'
+                        description: 'Programming language for pattern matching. REQUIRED when using "code" parameter. OPTIONAL for file-based search (auto-detected from extensions). Common values: "javascript", "typescript", "python", "java", "rust", "go", "cpp".'
                     },
                     context: {
                         type: 'number',
@@ -384,8 +384,8 @@ export class SearchTool extends BaseTool {
                     timeoutMs: {
                         type: 'number',
                         minimum: 1000,
-                        maximum: 120000,
-                        description: 'Timeout for ast-grep execution in milliseconds (default: 30000)'
+                        maximum: 180000,
+                        description: 'Timeout for ast-grep execution in milliseconds. Default: 30000 (30 seconds). Increase for large codebases.'
                     },
                     relativePaths: {
                         type: 'boolean',

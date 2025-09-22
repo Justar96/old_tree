@@ -4,10 +4,16 @@ import { WorkspaceManager } from './workspace-manager.js';
 import { AstGrepBinaryManager } from './binary-manager.js';
 import { ValidationError } from '../types/errors.js';
 
+/**
+ * Provides shared validation and path handling utilities for MCP tools.
+ */
 export abstract class BaseTool {
   protected pathResolver: PathResolver;
   protected validator: ParameterValidator;
 
+  /**
+   * Create a tool with workspace context and binary access.
+   */
   constructor(
     protected workspaceManager: WorkspaceManager,
     protected binaryManager: AstGrepBinaryManager
@@ -16,6 +22,9 @@ export abstract class BaseTool {
     this.validator = new ParameterValidator(workspaceManager.getWorkspaceRoot());
   }
 
+  /**
+   * Resolve provided paths and ensure they are accessible within the workspace.
+   */
   protected async resolveAndValidatePaths(paths?: string[]): Promise<ResolvedPaths> {
     const resolved = await this.pathResolver.resolvePaths(paths);
 
@@ -30,6 +39,9 @@ export abstract class BaseTool {
     return resolved;
   }
 
+  /**
+   * Resolve paths synchronously when asynchronous access is unnecessary.
+   */
   protected resolveAndValidatePathsSync(paths?: string[]): ResolvedPaths {
     const resolved = this.pathResolver.resolvePathsSync(paths);
 
@@ -44,6 +56,9 @@ export abstract class BaseTool {
     return resolved;
   }
 
+  /**
+   * Construct ast-grep arguments that apply to all tool executions.
+   */
   protected buildCommonArgs(params: any): string[] {
     const args: string[] = [];
 
@@ -94,6 +109,9 @@ export abstract class BaseTool {
     return args;
   }
 
+  /**
+   * Add language hint flags when one is provided by the caller.
+   */
   protected buildLanguageArgs(language?: string): string[] {
     const args: string[] = [];
     if (language) {
@@ -102,6 +120,9 @@ export abstract class BaseTool {
     return args;
   }
 
+  /**
+   * Request JSON output in the format expected by downstream parsers.
+   */
   protected buildJsonArgs(jsonStyle?: string): string[] {
     const args: string[] = [];
     args.push(`--json=${jsonStyle || 'stream'}`);
@@ -130,3 +151,10 @@ export abstract class BaseTool {
    */
   abstract execute(params: any): Promise<any>;
 }
+
+
+
+
+
+
+
