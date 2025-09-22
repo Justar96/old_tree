@@ -122,7 +122,7 @@ export class AstGrepBinaryManager {
     async findBinaryInPath() {
         const paths = process.env.PATH?.split(path.delimiter) || [];
         const binaryNames = process.platform === 'win32' ?
-            ['ast-grep.exe', 'ast-grep'] : ['ast-grep'];
+            ['ast-grep.exe', 'ast-grep.cmd', 'ast-grep.ps1', 'ast-grep'] : ['ast-grep'];
         for (const searchPath of paths) {
             for (const binaryName of binaryNames) {
                 const fullPath = path.join(searchPath, binaryName);
@@ -135,7 +135,18 @@ export class AstGrepBinaryManager {
     }
     async testBinary(binaryPath) {
         try {
-            await execFileAsync(binaryPath, ['--version'], { timeout: 5000 });
+            if (binaryPath.endsWith('.ps1')) {
+                // For PowerShell scripts, use powershell.exe to execute
+                await execFileAsync('powershell.exe', ['-File', binaryPath, '--version'], { timeout: 5000 });
+            }
+            else if (binaryPath.endsWith('.cmd')) {
+                // For batch files, use cmd.exe to execute
+                await execFileAsync('cmd.exe', ['/c', binaryPath, '--version'], { timeout: 5000 });
+            }
+            else {
+                // For executables, run directly
+                await execFileAsync(binaryPath, ['--version'], { timeout: 5000 });
+            }
             return true;
         }
         catch {
@@ -333,10 +344,12 @@ export class AstGrepBinaryManager {
         }
         const cwd = options.cwd || process.cwd();
         const timeout = options.timeout || 30000;
+        // Determine the command and arguments based on file type
+        const { command, commandArgs } = this.getExecutionCommand(this.binaryPath, args);
         // If stdin is provided, use spawn to write to child stdin
         if (options.stdin !== undefined) {
             return await new Promise((resolve, reject) => {
-                const child = spawn(this.binaryPath, args, { cwd });
+                const child = spawn(command, commandArgs, { cwd });
                 let stdout = '';
                 let stderr = '';
                 const timer = setTimeout(() => {
@@ -380,7 +393,7 @@ export class AstGrepBinaryManager {
         }
         // No stdin: use execFile
         try {
-            const result = await execFileAsync(this.binaryPath, args, { cwd, timeout, maxBuffer: 1024 * 1024 * 10 });
+            const result = await execFileAsync(command, commandArgs, { cwd, timeout, maxBuffer: 1024 * 1024 * 10 });
             return { stdout: result.stdout, stderr: result.stderr };
         }
         catch (error) {
@@ -391,6 +404,26 @@ export class AstGrepBinaryManager {
                 throw new BinaryError(`ast-grep binary not found at ${this.binaryPath}`);
             }
             throw new Error(`ast-grep execution failed: ${error.message}`);
+        }
+    }
+    getExecutionCommand(binaryPath, args) {
+        if (binaryPath.endsWith('.ps1')) {
+            return {
+                command: 'powershell.exe',
+                commandArgs: ['-File', binaryPath, ...args]
+            };
+        }
+        else if (binaryPath.endsWith('.cmd')) {
+            return {
+                command: 'cmd.exe',
+                commandArgs: ['/c', binaryPath, ...args]
+            };
+        }
+        else {
+            return {
+                command: binaryPath,
+                commandArgs: args
+            };
         }
     }
 }

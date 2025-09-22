@@ -57,18 +57,23 @@ export declare class RunRuleTool {
                         properties: {
                             metavariable: {
                                 type: string;
+                                description: string;
                             };
                             regex: {
                                 type: string;
+                                description: string;
                             };
                             notRegex: {
                                 type: string;
+                                description: string;
                             };
                             equals: {
                                 type: string;
+                                description: string;
                             };
                             includes: {
                                 type: string;
+                                description: string;
                             };
                         };
                         required: string[];
@@ -90,63 +95,70 @@ export declare class RunRuleTool {
                     type: string;
                     enum: string[];
                     default: string;
+                    description: string;
                 };
                 include: {
                     type: string;
                     items: {
                         type: string;
                     };
+                    description: string;
                 };
                 exclude: {
                     type: string;
                     items: {
                         type: string;
                     };
+                    description: string;
                 };
                 ruleIds: {
                     type: string;
                     items: {
                         type: string;
                     };
+                    description: string;
                 };
                 timeoutMs: {
                     type: string;
                     minimum: number;
                     maximum: number;
+                    description: string;
                 };
                 relativePaths: {
                     type: string;
                     default: boolean;
-                };
-                jsonStyle: {
-                    type: string;
-                    enum: string[];
-                    default: string;
+                    description: string;
                 };
                 follow: {
                     type: string;
                     default: boolean;
+                    description: string;
                 };
                 threads: {
                     type: string;
                     minimum: number;
                     maximum: number;
+                    description: string;
                 };
                 noIgnore: {
                     type: string;
                     default: boolean;
+                    description: string;
                 };
                 ignorePath: {
                     type: string;
                     items: {
                         type: string;
                     };
+                    description: string;
                 };
                 root: {
                     type: string;
+                    description: string;
                 };
                 workdir: {
                     type: string;
+                    description: string;
                 };
                 saveTo: {
                     type: string;

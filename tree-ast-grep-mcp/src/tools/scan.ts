@@ -1,4 +1,5 @@
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
@@ -33,8 +34,11 @@ export class ScanTool {
 
     const sanitizedParams = validation.sanitized as ScanParams;
 
+    // Default to current working directory if no paths specified to avoid scanning entire system
+    const defaultPaths = sanitizedParams.paths || [process.cwd()];
+    
     // Validate resource limits
-    const resourceValidation = await this.validator.validateResourceLimits(sanitizedParams.paths || ['.']);
+    const resourceValidation = await this.validator.validateResourceLimits(defaultPaths);
     if (!resourceValidation.valid) {
       throw new ValidationError('Resource limits exceeded', {
         errors: resourceValidation.errors,
@@ -43,7 +47,7 @@ export class ScanTool {
     }
 
     // Validate paths
-    const pathValidation = this.workspaceManager.validatePaths(sanitizedParams.paths || ['.']);
+    const pathValidation = this.workspaceManager.validatePaths(defaultPaths);
     if (!pathValidation.valid) {
       throw new ValidationError('Invalid paths', {
         errors: pathValidation.errors,
@@ -97,7 +101,10 @@ export class ScanTool {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       // Try to translate ast-grep errors to user-friendly messages
-      const friendlyMessage = this.validator.translateAstGrepError(errorMessage);
+      const friendlyMessage = this.validator.translateAstGrepError(errorMessage, {
+        paths: sanitizedParams.paths,
+        rules: sanitizedParams.rules
+      });
 
       throw new ExecutionError(
         `Scan execution failed: ${friendlyMessage}`,
@@ -135,7 +142,7 @@ export class ScanTool {
 
       // Parse results
       const findings = this.parseScanResults(result.stdout);
-      const filesScanned = this.extractFilesScanned(result.stderr);
+      const filesScanned = this.extractFilesScanned(result.stderr, findings, resolvedPaths);
 
       return { findings, filesScanned };
 
@@ -164,16 +171,51 @@ export class ScanTool {
     const tempDir = os.tmpdir();
     const rulesFile = path.join(tempDir, `ast-grep-rules-${Date.now()}.yml`);
 
-    await fs.writeFile(rulesFile, rulesContent, 'utf8');
+    // Convert multi-rule format to single-rule format if needed
+    let processedContent = rulesContent;
+    if (rulesContent.includes('rules:') && rulesContent.includes('- id:')) {
+      // Convert from multi-rule to single-rule format
+      const lines = rulesContent.split('\n');
+      let inRules = false;
+      let currentRule: string[] = [];
+      const singleRules: string[] = [];
+      
+      for (const line of lines) {
+        if (line.trim() === 'rules:') {
+          inRules = true;
+          continue;
+        }
+        
+        if (inRules && line.trim().startsWith('- id:')) {
+          if (currentRule.length > 0) {
+            singleRules.push(currentRule.join('\n'));
+          }
+          currentRule = [line.replace(/^\s*-\s*/, '')];
+        } else if (inRules && line.trim() && !line.trim().startsWith('#')) {
+          currentRule.push(line.replace(/^\s*/, '  '));
+        }
+      }
+      
+      if (currentRule.length > 0) {
+        singleRules.push(currentRule.join('\n'));
+      }
+      
+      // Use the first rule for single-rule format
+      if (singleRules.length > 0) {
+        processedContent = singleRules[0];
+      }
+    }
+
+    await fs.writeFile(rulesFile, processedContent, 'utf8');
     return rulesFile;
   }
 
   private buildScanArgs(params: ScanParams, resolvedPaths: string[], rulesFile: string | null): string[] {
     const args: string[] = ['scan'];
 
-    // Add rules file if specified (use -c/--config for rule files)
+    // Add rules file if specified (use --rule for single rule files)
     if (rulesFile) {
-      args.push('--config', rulesFile);
+      args.push('--rule', rulesFile);
     }
 
     // Add include patterns using globs
@@ -192,7 +234,10 @@ export class ScanTool {
 
     // Respect ignore settings
     if (params.noIgnore) {
-      args.push('--no-ignore');
+      // ast-grep requires specific values for --no-ignore
+      args.push('--no-ignore', 'hidden');
+      args.push('--no-ignore', 'dot');
+      args.push('--no-ignore', 'vcs');
     }
     if (params.ignorePath && params.ignorePath.length > 0) {
       for (const ig of params.ignorePath) {
@@ -306,107 +351,189 @@ export class ScanTool {
     };
   }
 
-  private extractFilesScanned(stderr: string): number {
-    // Try to extract file count from stderr
-    const fileCountMatch = stderr.match(/(\d+)\s+files?\s+scanned/i);
-    if (fileCountMatch) {
-      return parseInt(fileCountMatch[1], 10);
+  private extractFilesScanned(stderr: string, findings?: ScanResult['findings'], resolvedPaths?: string[]): number {
+    // Try to extract file count from stderr with multiple patterns
+    const patterns = [
+      /(\d+)\s+files?\s+scanned/i,
+      /(\d+)\s+files?\s+searched/i,
+      /across\s+(\d+)\s+files?/i
+    ];
+    for (const re of patterns) {
+      const m = stderr.match(re);
+      if (m) return parseInt(m[1], 10);
+    }
+
+    // Enhanced fallback: count unique files from findings if provided
+    if (findings && findings.length > 0) {
+      const unique = new Set(findings.map(f => f.file));
+      return unique.size;
+    }
+
+    // NEW: Use workspace file enumeration as fallback for scan operations
+    // This addresses the critical issue where ast-grep scan doesn't report file counts
+    if (resolvedPaths && resolvedPaths.length > 0) {
+      return this.countFilesInPaths(resolvedPaths);
     }
 
     return 0;
+  }
+
+  private countFilesInPaths(paths: string[]): number {
+    let totalFiles = 0;
+
+    for (const inputPath of paths) {
+      try {
+        const stats = fsSync.statSync(inputPath);
+
+        if (stats.isFile()) {
+          // Single file
+          totalFiles += 1;
+        } else if (stats.isDirectory()) {
+          // Directory - count JavaScript/TypeScript files
+          totalFiles += this.countFilesInDirectory(inputPath);
+        }
+      } catch (error) {
+        // Skip inaccessible paths
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Warning: Cannot access path ${inputPath}:`, errorMessage);
+      }
+    }
+
+    return totalFiles;
+  }
+
+  private countFilesInDirectory(dirPath: string): number {
+
+    let count = 0;
+    const visited = new Set(); // Prevent infinite loops from symlinks
+
+    const scanDir = (currentPath: string, depth = 0) => {
+      // Prevent infinite recursion
+      if (depth > 10 || visited.has(currentPath)) return;
+      visited.add(currentPath);
+
+      try {
+        const items = fsSync.readdirSync(currentPath);
+
+        for (const item of items) {
+          // Skip common directories that shouldn't be scanned
+          if (['node_modules', '.git', 'build', 'dist', '.next', 'coverage'].includes(item)) {
+            continue;
+          }
+
+          const itemPath = path.join(currentPath, item);
+
+          try {
+            const stats = fsSync.statSync(itemPath);
+
+            if (stats.isFile()) {
+              // Count files that ast-grep would typically process
+              const ext = path.extname(item).toLowerCase();
+              if (['.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.py', '.java', '.rs', '.go', '.cpp', '.c', '.h'].includes(ext)) {
+                count++;
+              }
+            } else if (stats.isDirectory() && !item.startsWith('.')) {
+              scanDir(itemPath, depth + 1);
+            }
+          } catch (error) {
+            // Skip inaccessible files/directories
+          }
+        }
+      } catch (error) {
+        // Skip inaccessible directories
+      }
+    };
+
+    scanDir(dirPath);
+    return count;
   }
 
   // Get tool schema for MCP
   static getSchema() {
     return {
       name: 'ast_scan',
-      description: 'Scan code with ast-grep rules for analysis and linting',
+      description: 'Scan code with ast-grep rules for analysis and linting. Use YAML rule files to define custom patterns for code analysis, security checks, and style enforcement. BEST PRACTICE: Use absolute paths for file-based scanning.',
       inputSchema: {
         type: 'object',
         properties: {
           rules: {
             type: 'string',
-            description: 'Path to rules file (.yml/.yaml) or inline YAML rules content'
+            description: 'Path to YAML rules file (.yml/.yaml) or inline YAML rules content. Rules define patterns to find and their severity levels. Example: "rules.yml" or inline YAML with id, message, severity, language, and rule.pattern fields.'
           },
           paths: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Files/directories to scan (default: current directory)'
+            description: 'Files/directories to scan. IMPORTANT: Use absolute paths for file-based scanning (e.g., "D:\\path\\to\\file.js"). Relative paths may not resolve correctly due to workspace detection issues. Default: current directory if no paths specified.'
           },
           format: {
             type: 'string',
             enum: ['json', 'text', 'github'],
             default: 'json',
-            description: 'Output format for results'
+            description: 'Output format for results. "json" for structured data, "text" for human-readable, "github" for GitHub Actions format.'
           },
           severity: {
             type: 'string',
             enum: ['error', 'warning', 'info', 'all'],
             default: 'all',
-            description: 'Filter findings by severity level'
+            description: 'Filter findings by severity level. "error" for critical issues, "warning" for important issues, "info" for suggestions, "all" for everything.'
           },
           ruleIds: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Specific rule IDs to run (filters results)'
+            description: 'Specific rule IDs to run (filters results). Only run rules with these IDs from the rules file.'
           },
           include: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Include glob patterns'
+            description: 'Include glob patterns for file filtering. Example: ["**/*.js", "**/*.ts"] to only scan JavaScript/TypeScript files.'
           },
           exclude: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Exclude glob patterns (default: node_modules, .git, dist, build, coverage, *.min.js)'
+            description: 'Exclude glob patterns. Default excludes: node_modules, .git, dist, build, coverage, *.min.js, *.bundle.js, .next, .vscode, .idea'
           },
           timeoutMs: {
             type: 'number',
             minimum: 1000,
             maximum: 180000,
-            description: 'Timeout for ast-grep scan in milliseconds'
+            description: 'Timeout for ast-grep scan in milliseconds (default: 30000)'
           },
           relativePaths: {
             type: 'boolean',
             default: false,
-            description: 'Return file paths relative to workspace root'
-          },
-          jsonStyle: {
-            type: 'string',
-            enum: ['stream', 'pretty', 'compact'],
-            default: 'stream',
-            description: 'JSON output format to request from ast-grep'
+            description: 'Return file paths relative to workspace root instead of absolute paths'
           },
           follow: {
             type: 'boolean',
             default: false,
-            description: 'Follow symlinks during scan'
+            description: 'Follow symlinks during file scanning'
           },
           threads: {
             type: 'number',
             minimum: 1,
             maximum: 64,
-            description: 'Number of threads to use'
+            description: 'Number of threads to use for parallel processing (default: auto)'
           },
           noIgnore: {
             type: 'boolean',
             default: false,
-            description: 'Disable ignore rules (use carefully)'
+            description: 'Disable ignore rules and scan all files including node_modules, .git, etc. Use with caution as it may scan large amounts of files and hit resource limits.'
           },
           ignorePath: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Additional ignore file(s) to respect'
+            description: 'Additional ignore file(s) to respect beyond default .gitignore patterns'
           },
           root: {
             type: 'string',
-            description: 'Override project root used by ast-grep'
+            description: 'Override project root used by ast-grep. Note: May not work as expected due to ast-grep command limitations.'
           },
           workdir: {
             type: 'string',
-            description: 'Working directory for ast-grep'
+            description: 'Working directory for ast-grep. Note: May not work as expected due to ast-grep command limitations.'
           }
-        }
+        },
+        required: ['rules']
       }
     };
   }

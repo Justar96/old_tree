@@ -353,8 +353,15 @@ export class ParameterValidator {
             try {
                 // Resolve and normalize path
                 const resolvedPath = path.resolve(this.workspaceRoot, inputPath);
-                // Security check: ensure path is within workspace
-                if (!resolvedPath.startsWith(this.workspaceRoot)) {
+                const normalizedRoot = path.resolve(this.workspaceRoot);
+                const relativeFromRoot = path.relative(normalizedRoot, resolvedPath);
+                // Security check: ensure path is within workspace using robust relative check
+                if (relativeFromRoot === '' ||
+                    relativeFromRoot === '.') {
+                    // resolvedPath is the root itself; allow
+                }
+                else if (relativeFromRoot.startsWith('..' + path.sep) ||
+                    relativeFromRoot === '..') {
                     result.valid = false;
                     result.errors.push(`Path "${inputPath}" is outside workspace root`);
                     continue;
@@ -380,26 +387,27 @@ export class ParameterValidator {
     async validateResourceLimits(paths) {
         const result = { valid: true, errors: [], warnings: [] };
         const maxFileSize = parseInt(process.env.MAX_FILE_SIZE || '10485760'); // 10MB
-        const maxFiles = parseInt(process.env.MAX_FILES || '10000');
+        const maxFiles = parseInt(process.env.MAX_FILES || '100000');
         let totalFiles = 0;
         for (const dirPath of paths) {
             try {
-                const stats = await fs.stat(dirPath);
+                const absolutePath = path.resolve(this.workspaceRoot, dirPath);
+                const stats = await fs.stat(absolutePath);
                 if (stats.isFile()) {
                     totalFiles++;
                     if (stats.size > maxFileSize) {
-                        result.warnings.push(`File "${dirPath}" (${stats.size} bytes) exceeds size limit`);
+                        result.warnings.push(`File "${absolutePath}" (${stats.size} bytes) exceeds size limit`);
                     }
                 }
                 else if (stats.isDirectory()) {
                     // Count files in directory
-                    const files = await this.countFilesRecursive(dirPath);
+                    const files = await this.countFilesRecursive(absolutePath);
                     totalFiles += files;
                 }
             }
             catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                result.warnings.push(`Cannot access "${dirPath}": ${errorMessage}`);
+                result.warnings.push(`Cannot access "${path.resolve(this.workspaceRoot, dirPath)}": ${errorMessage}`);
             }
         }
         if (totalFiles > maxFiles) {
@@ -471,8 +479,9 @@ export class ParameterValidator {
             result.errors.push(`Invalid metavariable syntax: ${invalidMetavars.join(', ')}. Metavariables must start with uppercase letter or underscore (e.g., $VAR, $_)`);
             result.valid = false;
         }
-        // Check for incomplete metavariables
-        const incompleteMetavars = trimmedPattern.match(/\$\$[^$]/g);
+        // Check for incomplete metavariables ($$X where X is not $ or whitespace/boundary)
+        // This should catch things like $$a but not $$$
+        const incompleteMetavars = trimmedPattern.match(/\$\$(?!\$)[a-zA-Z_]/g);
         if (incompleteMetavars) {
             result.errors.push('Incomplete multi-metavariable syntax. Use $$$ for multi-node matching');
             result.valid = false;
@@ -603,36 +612,64 @@ export class ParameterValidator {
         }
         return undefined;
     }
-    // Translate common ast-grep errors to user-friendly messages
-    translateAstGrepError(stderr) {
-        const errorMappings = [
-            {
-                pattern: /pattern .* is not valid/i,
-                message: 'Pattern syntax is invalid. Check for proper brackets, quotes, and metavariable syntax ($VAR, $$$)'
-            },
-            {
-                pattern: /language .* is not supported/i,
-                message: 'Language not supported. Try: javascript, python, java, rust, go, cpp, etc.'
-            },
-            {
-                pattern: /no matches found/i,
-                message: 'No matches found. Consider: 1) Adding language parameter, 2) Simplifying pattern, 3) Using metavariables like $VAR'
-            },
-            {
-                pattern: /parse error/i,
-                message: 'Code parsing failed. Check if files are valid for the specified language'
-            },
-            {
-                pattern: /timeout/i,
-                message: 'Operation timed out. Try narrowing search paths or simplifying pattern'
-            }
-        ];
-        for (const mapping of errorMappings) {
-            if (mapping.pattern.test(stderr)) {
-                return mapping.message;
-            }
+    // Enhanced error translation with context awareness
+    translateAstGrepError(errorMessage, context) {
+        // File not found errors
+        if (errorMessage.includes('cannot find the file') || errorMessage.includes('No such file') || errorMessage.includes('system cannot find the file')) {
+            return `File not found. Check that the path exists and is accessible from workspace root: ${this.workspaceRoot}. Tip: Use absolute paths or ensure files exist in the workspace.`;
         }
-        return stderr; // Return original if no mapping found
+        // Permission denied errors
+        if (errorMessage.includes('permission denied') || errorMessage.includes('access denied')) {
+            return `Permission denied accessing file or directory. Ensure the MCP server has read access to the specified paths.`;
+        }
+        // Pattern syntax errors
+        if (errorMessage.includes('pattern') && (errorMessage.includes('error') || errorMessage.includes('invalid'))) {
+            const patternContext = context?.pattern ? ` Pattern: "${context.pattern}"` : '';
+            return `Invalid AST pattern syntax.${patternContext} Check metavariable usage: $VAR (single nodes), $$$ (multi-node). Ensure proper brackets and quotes.`;
+        }
+        // Language detection errors
+        if (errorMessage.includes('language') && (errorMessage.includes('not supported') || errorMessage.includes('unknown'))) {
+            const availableLanguages = ['javascript', 'typescript', 'python', 'java', 'rust', 'go', 'cpp', 'c', 'html', 'css'];
+            return `Language detection failed. Specify language explicitly or check file extensions. Available languages: ${availableLanguages.join(', ')}`;
+        }
+        // Parsing errors
+        if (errorMessage.includes('parse error') || errorMessage.includes('syntax error')) {
+            const languageContext = context?.language ? ` for ${context.language}` : '';
+            return `Code parsing failed${languageContext}. Check if files contain valid syntax for the specified language. Some files may be corrupted or in binary format.`;
+        }
+        // Timeout errors
+        if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+            const pathContext = context?.paths ? ` Paths: ${Array.isArray(context.paths) ? context.paths.join(', ') : context.paths}` : '';
+            return `Operation timed out. Try: 1) Narrowing search paths, 2) Simplifying patterns, 3) Excluding large directories like node_modules.${pathContext}`;
+        }
+        // Empty results (not an error but needs better messaging)
+        if (errorMessage.includes('no matches found') || errorMessage.includes('0 matches')) {
+            const suggestions = [
+                'Check if files contain the expected patterns',
+                'Verify language parameter matches file types',
+                'Try simpler patterns first',
+                'Use metavariables like $VAR for flexible matching'
+            ];
+            return `No matches found. Suggestions: ${suggestions.join(', ')}`;
+        }
+        // Binary/executable errors
+        if (errorMessage.includes('not found') && errorMessage.includes('ast-grep')) {
+            return `ast-grep binary not found. Ensure binary is installed or use --auto-install flag. Check AST_GREP_BINARY_PATH environment variable.`;
+        }
+        // Resource exhaustion
+        if (errorMessage.includes('too many') || errorMessage.includes('limit exceeded')) {
+            return `Resource limits exceeded. Try: 1) Reducing search scope, 2) Using include/exclude patterns, 3) Increasing timeout limits.`;
+        }
+        // Network/download errors (for binary management)
+        if (errorMessage.includes('download') || errorMessage.includes('network')) {
+            return `Network error downloading ast-grep binary. Check internet connection or use --use-system flag to use system-installed ast-grep.`;
+        }
+        // Path traversal warnings
+        if (errorMessage.includes('outside workspace') || errorMessage.includes('blocked path')) {
+            return `Path outside workspace boundaries. For security, only paths within the workspace root are allowed: ${this.workspaceRoot}`;
+        }
+        // Return enhanced error with workspace context
+        return `${errorMessage} (Workspace: ${this.workspaceRoot})`;
     }
     // Validate rule builder parameters
     validateRuleBuilderParams(params) {

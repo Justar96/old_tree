@@ -13,52 +13,139 @@ export class RunRuleTool {
     static getSchema() {
         return {
             name: 'ast_run_rule',
-            description: 'Generate an ast-grep YAML rule and immediately run ast_scan with it',
+            description: 'Generate an ast-grep YAML rule and immediately run ast_scan with it. Perfect for creating custom linting rules, security checks, and code analysis patterns. BEST PRACTICE: Use absolute paths for file-based scanning.',
             inputSchema: {
                 type: 'object',
                 properties: {
                     // Rule fields
-                    id: { type: 'string', description: 'Rule ID (unique and descriptive)' },
-                    language: { type: 'string', description: 'Language for the rule (e.g., javascript, typescript, python)' },
-                    pattern: { type: 'string', description: 'Primary pattern with metavariables ($VAR, $$$) describing the match' },
-                    message: { type: 'string', description: 'Human-readable message explaining the finding' },
-                    severity: { type: 'string', enum: ['error', 'warning', 'info'], default: 'warning', description: 'Severity level for rule' },
-                    kind: { type: 'string', description: 'Optional node kind to constrain matches (language-specific)' },
-                    insidePattern: { type: 'string', description: 'Optional: pattern that the match must be inside of' },
-                    hasPattern: { type: 'string', description: 'Optional: pattern that must exist inside the match' },
-                    notPattern: { type: 'string', description: 'Optional: pattern that must NOT exist inside the match' },
+                    id: {
+                        type: 'string',
+                        description: 'Rule ID (unique and descriptive). Used to identify the rule in results. Example: "no-console-log", "prefer-const", "security-hardcoded-secret".'
+                    },
+                    language: {
+                        type: 'string',
+                        description: 'Programming language for the rule. Common values: "javascript", "typescript", "python", "java", "rust", "go", "cpp". Determines AST parsing and pattern matching behavior.'
+                    },
+                    pattern: {
+                        type: 'string',
+                        description: 'Primary AST pattern with metavariables describing what to match. Use: $VAR (single node), $$$ (multi-node), $NAME (capture names). Examples: "console.log($_)" (any console.log), "var $NAME" (var declarations), "function $NAME($ARGS)" (function definitions).'
+                    },
+                    message: {
+                        type: 'string',
+                        description: 'Human-readable message explaining the finding. Shown to users when rule matches. Example: "Use logger.info instead of console.log", "Prefer const over var for immutable variables".'
+                    },
+                    severity: {
+                        type: 'string',
+                        enum: ['error', 'warning', 'info'],
+                        default: 'warning',
+                        description: 'Severity level for rule. "error" for critical issues, "warning" for important issues, "info" for suggestions.'
+                    },
+                    kind: {
+                        type: 'string',
+                        description: 'Optional node kind to constrain matches (language-specific). Examples: "function_declaration", "variable_declaration", "call_expression". Helps narrow down matches to specific AST node types.'
+                    },
+                    insidePattern: {
+                        type: 'string',
+                        description: 'Optional: pattern that the match must be inside of. Example: "class $CLASS { $$$ }" to only match patterns inside class definitions.'
+                    },
+                    hasPattern: {
+                        type: 'string',
+                        description: 'Optional: pattern that must exist inside the match. Example: "if ($COND) { $$$ }" to only match if statements with conditions.'
+                    },
+                    notPattern: {
+                        type: 'string',
+                        description: 'Optional: pattern that must NOT exist inside the match. Example: "console.log($_)" to exclude console.log calls that are inside try-catch blocks.'
+                    },
                     where: {
                         type: 'array',
                         items: {
                             type: 'object',
                             properties: {
-                                metavariable: { type: 'string' },
-                                regex: { type: 'string' },
-                                notRegex: { type: 'string' },
-                                equals: { type: 'string' },
-                                includes: { type: 'string' },
+                                metavariable: { type: 'string', description: 'Metavariable name to constrain (e.g., "NAME", "ARGS")' },
+                                regex: { type: 'string', description: 'Regex pattern the metavariable must match' },
+                                notRegex: { type: 'string', description: 'Regex pattern the metavariable must NOT match' },
+                                equals: { type: 'string', description: 'Exact string the metavariable must equal' },
+                                includes: { type: 'string', description: 'String the metavariable must include' },
                             },
                             required: ['metavariable']
                         },
-                        description: 'Optional: constraints on metavariables (regex, equals, includes)'
+                        description: 'Optional: constraints on metavariables using regex, equals, or includes. Example: [{"metavariable": "NAME", "regex": "^[A-Z]"}] to only match names starting with uppercase.'
                     },
-                    fix: { type: 'string', description: 'Optional rewrite template using the same metavariables' },
+                    fix: {
+                        type: 'string',
+                        description: 'Optional rewrite template using the same metavariables as pattern. Enables automatic fixing. Example: "logger.info($_)" to replace "console.log($_)" with "logger.info($_)".'
+                    },
                     // Scan fields
-                    paths: { type: 'array', items: { type: 'string' }, description: 'Files/directories to scan' },
-                    format: { type: 'string', enum: ['json', 'text', 'github'], default: 'json' },
-                    include: { type: 'array', items: { type: 'string' } },
-                    exclude: { type: 'array', items: { type: 'string' } },
-                    ruleIds: { type: 'array', items: { type: 'string' } },
-                    timeoutMs: { type: 'number', minimum: 1000, maximum: 180000 },
-                    relativePaths: { type: 'boolean', default: false },
-                    jsonStyle: { type: 'string', enum: ['stream', 'pretty', 'compact'], default: 'stream' },
-                    follow: { type: 'boolean', default: false },
-                    threads: { type: 'number', minimum: 1, maximum: 64 },
-                    noIgnore: { type: 'boolean', default: false },
-                    ignorePath: { type: 'array', items: { type: 'string' } },
-                    root: { type: 'string' },
-                    workdir: { type: 'string' },
-                    saveTo: { type: 'string', description: 'Optional path to save the generated YAML (relative to workspace)' },
+                    paths: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Files/directories to scan. IMPORTANT: Use absolute paths for file-based scanning (e.g., "D:\\path\\to\\file.js"). Relative paths may not resolve correctly due to workspace detection issues.'
+                    },
+                    format: {
+                        type: 'string',
+                        enum: ['json', 'text', 'github'],
+                        default: 'json',
+                        description: 'Output format for results. "json" for structured data, "text" for human-readable, "github" for GitHub Actions format.'
+                    },
+                    include: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Include glob patterns for file filtering. Example: ["**/*.js", "**/*.ts"] to only scan JavaScript/TypeScript files.'
+                    },
+                    exclude: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Exclude glob patterns. Default excludes: node_modules, .git, dist, build, coverage, *.min.js, *.bundle.js, .next, .vscode, .idea'
+                    },
+                    ruleIds: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Specific rule IDs to run (filters results). Only run rules with these IDs from the rules file.'
+                    },
+                    timeoutMs: {
+                        type: 'number',
+                        minimum: 1000,
+                        maximum: 180000,
+                        description: 'Timeout for ast-grep scan in milliseconds (default: 30000)'
+                    },
+                    relativePaths: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Return file paths relative to workspace root instead of absolute paths'
+                    },
+                    follow: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Follow symlinks during file scanning'
+                    },
+                    threads: {
+                        type: 'number',
+                        minimum: 1,
+                        maximum: 64,
+                        description: 'Number of threads to use for parallel processing (default: auto)'
+                    },
+                    noIgnore: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Disable ignore rules and scan all files including node_modules, .git, etc. Use with caution as it may scan large amounts of files and hit resource limits.'
+                    },
+                    ignorePath: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Additional ignore file(s) to respect beyond default .gitignore patterns'
+                    },
+                    root: {
+                        type: 'string',
+                        description: 'Override project root used by ast-grep. Note: May not work as expected due to ast-grep command limitations.'
+                    },
+                    workdir: {
+                        type: 'string',
+                        description: 'Working directory for ast-grep. Note: May not work as expected due to ast-grep command limitations.'
+                    },
+                    saveTo: {
+                        type: 'string',
+                        description: 'Optional path to save the generated YAML rule file (relative to workspace). Example: "rules/my-rule.yml" to save the generated rule for reuse.'
+                    },
                 },
                 required: ['id', 'language', 'pattern']
             }
@@ -74,9 +161,11 @@ export class RunRuleTool {
         // Build YAML
         const yaml = this.buildYaml(rule);
         // Build scan params and validate
+        // Default to current working directory if no paths specified to avoid scanning entire system
+        const defaultPaths = params.paths || [process.cwd()];
         const scanParams = {
             rules: yaml,
-            paths: params.paths,
+            paths: defaultPaths,
             format: params.format || 'json',
             severity: params.severity || 'all',
             ruleIds: params.ruleIds,
@@ -131,22 +220,22 @@ export class RunRuleTool {
         lines.push('# - Use $VAR for single node capture, $$$ for multi-node');
         lines.push('# - Add inside/has/not patterns to narrow results');
         lines.push('# - Use where to constrain metavariables (regex, equals, includes)');
-        lines.push('rules:');
-        lines.push(`  - id: ${p.id}`);
-        lines.push(`    message: ${JSON.stringify(p.message || p.id)}`);
-        lines.push(`    severity: ${p.severity || 'warning'}`);
-        lines.push(`    language: ${p.language}`);
-        lines.push(`    pattern: ${JSON.stringify(p.pattern)}`);
+        lines.push(`id: ${p.id}`);
+        lines.push(`message: ${JSON.stringify(p.message || p.id)}`);
+        lines.push(`severity: ${p.severity || 'warning'}`);
+        lines.push(`language: ${p.language}`);
+        lines.push(`rule:`);
+        lines.push(`  pattern: ${JSON.stringify(p.pattern)}`);
         if (p.kind)
-            lines.push(`    kind: ${JSON.stringify(p.kind)}`);
+            lines.push(`  kind: ${JSON.stringify(p.kind)}`);
         if (p.insidePattern)
-            lines.push(`    inside: { pattern: ${JSON.stringify(p.insidePattern)} }`);
+            lines.push(`  inside: { pattern: ${JSON.stringify(p.insidePattern)} }`);
         if (p.hasPattern)
-            lines.push(`    has: { pattern: ${JSON.stringify(p.hasPattern)} }`);
+            lines.push(`  has: { pattern: ${JSON.stringify(p.hasPattern)} }`);
         if (p.notPattern)
-            lines.push(`    not: { pattern: ${JSON.stringify(p.notPattern)} }`);
+            lines.push(`  not: { pattern: ${JSON.stringify(p.notPattern)} }`);
         if (p.where && p.where.length > 0) {
-            lines.push('    where:');
+            lines.push('  where:');
             for (const w of p.where) {
                 const row = [];
                 row.push(`metavariable: ${w.metavariable}`);
@@ -158,11 +247,11 @@ export class RunRuleTool {
                     row.push(`equals: ${JSON.stringify(w.equals)}`);
                 if (w.includes)
                     row.push(`includes: ${JSON.stringify(w.includes)}`);
-                lines.push(`      - ${row.join(', ')}`);
+                lines.push(`    - ${row.join(', ')}`);
             }
         }
         if (p.fix)
-            lines.push(`    fix: ${JSON.stringify(p.fix)}`);
+            lines.push(`  fix: ${JSON.stringify(p.fix)}`);
         return lines.join('\n');
     }
 }

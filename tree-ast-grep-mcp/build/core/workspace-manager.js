@@ -23,7 +23,14 @@ export class WorkspaceManager {
         };
     }
     autoDetectWorkspaceRoot() {
+        // Priority 1: Use explicitly set WORKSPACE_ROOT environment variable
+        if (process.env.WORKSPACE_ROOT) {
+            const explicitRoot = path.resolve(process.env.WORKSPACE_ROOT);
+            console.error(`Using explicit workspace root: ${explicitRoot}`);
+            return explicitRoot;
+        }
         let currentDir = process.cwd();
+        console.error(`Starting workspace detection from: ${currentDir}`);
         // Look for common project root indicators
         const rootIndicators = [
             '.git',
@@ -42,6 +49,7 @@ export class WorkspaceManager {
         for (const indicator of rootIndicators) {
             try {
                 fsSync.accessSync(path.join(currentDir, indicator));
+                console.error(`Found workspace indicator '${indicator}' in: ${currentDir}`);
                 return currentDir; // Found indicator in current directory
             }
             catch {
@@ -51,11 +59,12 @@ export class WorkspaceManager {
         // Walk up directories looking for indicators
         let parentDir = path.dirname(currentDir);
         let depth = 0;
-        const maxDepth = 5;
+        const maxDepth = 3; // Reduced from 5 to prevent going too high
         while (parentDir !== currentDir && depth < maxDepth) {
             for (const indicator of rootIndicators) {
                 try {
                     fsSync.accessSync(path.join(parentDir, indicator));
+                    console.error(`Found workspace indicator '${indicator}' in parent: ${parentDir}`);
                     return parentDir; // Found indicator in parent directory
                 }
                 catch {
@@ -66,8 +75,10 @@ export class WorkspaceManager {
             parentDir = path.dirname(currentDir);
             depth++;
         }
-        // Fallback to current working directory
-        return process.cwd();
+        // Fallback to current working directory (always safe)
+        const fallbackRoot = process.cwd();
+        console.error(`No workspace indicators found, using current directory: ${fallbackRoot}`);
+        return fallbackRoot;
     }
     getBlockedPaths() {
         const systemPaths = [
@@ -90,8 +101,15 @@ export class WorkspaceManager {
         try {
             // Resolve the path relative to workspace root
             const resolvedPath = path.resolve(this.config.root, inputPath);
+            const normalizedRoot = path.resolve(this.config.root);
+            const relativeFromRoot = path.relative(normalizedRoot, resolvedPath);
             // Ensure the resolved path is within the workspace root
-            if (!resolvedPath.startsWith(this.config.root)) {
+            if (relativeFromRoot === '' ||
+                relativeFromRoot === '.') {
+                // resolvedPath is the root itself; allow
+            }
+            else if (relativeFromRoot.startsWith('..' + path.sep) ||
+                relativeFromRoot === '..') {
                 return {
                     valid: false,
                     resolvedPath,
@@ -109,7 +127,7 @@ export class WorkspaceManager {
                 }
             }
             // Check depth limit
-            const relativePath = path.relative(this.config.root, resolvedPath);
+            const relativePath = relativeFromRoot;
             const depth = relativePath.split(path.sep).length;
             if (depth > this.config.maxDepth) {
                 return {
@@ -154,7 +172,7 @@ export class WorkspaceManager {
     }
     // Get all files in the workspace (with safety limits)
     async getWorkspaceFiles(options = {}) {
-        const { includePatterns = [], excludePatterns = ['node_modules', '.git', 'build', 'dist'], maxFiles = 10000 } = options;
+        const { includePatterns = [], excludePatterns = ['node_modules', '.git', 'build', 'dist'], maxFiles = 100000 } = options;
         const files = [];
         const visited = new Set();
         const scanDirectory = async (dirPath, currentDepth = 0) => {

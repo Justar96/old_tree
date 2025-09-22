@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fsSync from 'fs';
 import { ParameterValidator } from '../core/validator.js';
 import { ValidationError, ExecutionError } from '../types/errors.js';
 export class SearchTool {
@@ -21,21 +22,25 @@ export class SearchTool {
             });
         }
         const sanitizedParams = validation.sanitized;
-        // Validate resource limits
-        const resourceValidation = await this.validator.validateResourceLimits(sanitizedParams.paths || ['.']);
-        if (!resourceValidation.valid) {
-            throw new ValidationError('Resource limits exceeded', {
-                errors: resourceValidation.errors,
-                params: sanitizedParams
-            });
-        }
-        // Validate paths
-        const pathValidation = this.workspaceManager.validatePaths(sanitizedParams.paths || ['.']);
-        if (!pathValidation.valid) {
-            throw new ValidationError('Invalid paths', {
-                errors: pathValidation.errors,
-                params: sanitizedParams
-            });
+        // Skip resource and path validation for inline code searches
+        let pathValidation = { valid: true, resolvedPaths: [] };
+        if (!sanitizedParams.code) {
+            // Only validate resources and paths for file-based searches
+            const resourceValidation = await this.validator.validateResourceLimits(sanitizedParams.paths || ['.']);
+            if (!resourceValidation.valid) {
+                throw new ValidationError('Resource limits exceeded', {
+                    errors: resourceValidation.errors,
+                    params: sanitizedParams
+                });
+            }
+            // Validate paths
+            pathValidation = this.workspaceManager.validatePaths(sanitizedParams.paths || ['.']);
+            if (!pathValidation.valid) {
+                throw new ValidationError('Invalid paths', {
+                    errors: pathValidation.errors,
+                    params: sanitizedParams
+                });
+            }
         }
         try {
             // Build ast-grep command arguments
@@ -67,7 +72,7 @@ export class SearchTool {
             }
             // Parse results
             const matches = this.parseSearchResults(result.stdout, sanitizedParams, this.workspaceManager.getWorkspaceRoot());
-            const filesScanned = this.extractFilesScanned(result.stderr, matches);
+            const filesScanned = this.extractFilesScanned(result.stderr, matches, pathValidation.resolvedPaths);
             return {
                 matches: matches.slice(0, sanitizedParams.maxMatches),
                 summary: {
@@ -84,12 +89,16 @@ export class SearchTool {
             }
             const errorMessage = error instanceof Error ? error.message : String(error);
             // Try to translate ast-grep errors to user-friendly messages
-            const friendlyMessage = this.validator.translateAstGrepError(errorMessage);
+            const friendlyMessage = this.validator.translateAstGrepError(errorMessage, {
+                pattern: sanitizedParams.pattern,
+                language: sanitizedParams.language,
+                paths: sanitizedParams.paths
+            });
             throw new ExecutionError(`Search execution failed: ${friendlyMessage}`, { params: sanitizedParams, originalError: error });
         }
     }
     buildSearchArgs(params, resolvedPaths) {
-        const args = ['run'];
+        const args = [];
         // Add pattern (required)
         args.push('--pattern', params.pattern);
         // Add language filter if specified (required for ast-grep)
@@ -112,9 +121,12 @@ export class SearchTool {
                 args.push('--globs', `!${pattern}`);
             }
         }
-        // Respect ignore settings
+        // Respect ignore settings  
         if (params.noIgnore) {
-            args.push('--no-ignore');
+            // ast-grep requires specific values for --no-ignore
+            args.push('--no-ignore', 'hidden');
+            args.push('--no-ignore', 'dot');
+            args.push('--no-ignore', 'vcs');
         }
         if (params.ignorePath && params.ignorePath.length > 0) {
             for (const ig of params.ignorePath) {
@@ -244,120 +256,190 @@ export class SearchTool {
             captures
         };
     }
-    extractFilesScanned(stderr, matches) {
-        // Try to extract file count from stderr
-        const fileCountMatch = stderr.match(/(\d+)\s+files?\s+searched/i);
-        if (fileCountMatch) {
-            return parseInt(fileCountMatch[1], 10);
+    extractFilesScanned(stderr, matches, resolvedPaths) {
+        // Try to extract file count from stderr across multiple phrasings
+        const patterns = [
+            /(\d+)\s+files?\s+searched/i,
+            /(\d+)\s+files?\s+scanned/i,
+            /across\s+(\d+)\s+files?/i
+        ];
+        for (const re of patterns) {
+            const m = stderr.match(re);
+            if (m)
+                return parseInt(m[1], 10);
         }
-        // Fallback: count unique files from matches
-        const unique = new Set(matches.map(m => m.file));
-        return unique.size || 0;
+        // Enhanced fallback: count unique files from matches
+        if (matches && matches.length > 0) {
+            const unique = new Set(matches.map(m => m.file));
+            return unique.size;
+        }
+        // NEW: Use file counting as fallback for consistency with ScanTool
+        if (resolvedPaths && resolvedPaths.length > 0) {
+            return this.countFilesInPaths(resolvedPaths);
+        }
+        return 0;
+    }
+    countFilesInPaths(paths) {
+        let totalFiles = 0;
+        for (const inputPath of paths) {
+            try {
+                const stats = fsSync.statSync(inputPath);
+                if (stats.isFile()) {
+                    // Single file
+                    totalFiles += 1;
+                }
+                else if (stats.isDirectory()) {
+                    // Directory - count files that would be processed
+                    totalFiles += this.countFilesInDirectory(inputPath);
+                }
+            }
+            catch (error) {
+                // Skip inaccessible paths
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error(`Warning: Cannot access path ${inputPath}:`, errorMessage);
+            }
+        }
+        return totalFiles;
+    }
+    countFilesInDirectory(dirPath) {
+        let count = 0;
+        const visited = new Set(); // Prevent infinite loops from symlinks
+        const scanDir = (currentPath, depth = 0) => {
+            // Prevent infinite recursion
+            if (depth > 10 || visited.has(currentPath))
+                return;
+            visited.add(currentPath);
+            try {
+                const items = fsSync.readdirSync(currentPath);
+                for (const item of items) {
+                    // Skip common directories that shouldn't be scanned
+                    if (['node_modules', '.git', 'build', 'dist', '.next', 'coverage'].includes(item)) {
+                        continue;
+                    }
+                    const itemPath = path.join(currentPath, item);
+                    try {
+                        const stats = fsSync.statSync(itemPath);
+                        if (stats.isFile()) {
+                            // Count files that ast-grep would typically process
+                            const ext = path.extname(item).toLowerCase();
+                            if (['.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs', '.py', '.java', '.rs', '.go', '.cpp', '.c', '.h'].includes(ext)) {
+                                count++;
+                            }
+                        }
+                        else if (stats.isDirectory() && !item.startsWith('.')) {
+                            scanDir(itemPath, depth + 1);
+                        }
+                    }
+                    catch (error) {
+                        // Skip inaccessible files/directories
+                    }
+                }
+            }
+            catch (error) {
+                // Skip inaccessible directories
+            }
+        };
+        scanDir(dirPath);
+        return count;
     }
     // Get tool schema for MCP
     static getSchema() {
         return {
             name: 'ast_search',
-            description: 'Perform structural code search using AST patterns',
+            description: 'Perform structural code search using AST patterns. Supports simple text search, metavariable capture, and complex structural patterns. BEST PRACTICE: Use "code" parameter for inline search (most reliable) or absolute paths for file-based search.',
             inputSchema: {
                 type: 'object',
                 properties: {
                     pattern: {
                         type: 'string',
-                        description: 'AST pattern to search for. Examples: "console.log($_)" for function calls, "function $NAME($ARGS) { $$$ }" for function definitions, "import $WHAT from $WHERE" for imports'
+                        description: 'AST pattern to search for using ast-grep syntax. Use metavariables: $VAR (single node), $$$ (multi-node), $NAME (capture names). Examples: "console.log($_)" (any console.log call), "function $NAME($ARGS)" (function definitions), "import $WHAT from $WHERE" (import statements), "class $NAME extends $BASE" (class inheritance), "var $NAME" (variable declarations).'
+                    },
+                    code: {
+                        type: 'string',
+                        description: 'RECOMMENDED: Search inline code instead of files. Most reliable method. Example: "console.log(\'test\'); const x = 5;" - will search this code directly and return matches with line/column positions.'
                     },
                     paths: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'Files/directories to search (default: current directory)'
+                        description: 'Files/directories to search. IMPORTANT: Use absolute paths for file-based search (e.g., "D:\\path\\to\\file.js"). Relative paths may not resolve correctly due to workspace detection issues. Default: current directory if no paths specified.'
                     },
                     language: {
                         type: 'string',
-                        description: 'Programming language hint for better pattern matching. Supported: javascript, typescript, python, java, rust, go, cpp, etc. Auto-detected from pattern if not specified'
+                        description: 'Programming language for pattern matching. Required when using "code" parameter. Common values: "javascript", "typescript", "python", "java", "rust", "go", "cpp". Auto-detected from file extensions if not specified.'
                     },
                     context: {
                         type: 'number',
                         minimum: 0,
                         maximum: 10,
                         default: 3,
-                        description: 'Lines of context around matches'
+                        description: 'Lines of context around matches (0-10). Shows surrounding code for better understanding of match context.'
                     },
                     include: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'Include glob patterns'
+                        description: 'Include glob patterns for file filtering. Example: ["**/*.js", "**/*.ts"] to only search JavaScript/TypeScript files.'
                     },
                     exclude: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'Exclude glob patterns (default: node_modules, .git, dist, build, coverage, *.min.js)'
+                        description: 'Exclude glob patterns. Default excludes: node_modules, .git, dist, build, coverage, *.min.js, *.bundle.js, .next, .vscode, .idea'
                     },
                     maxMatches: {
                         type: 'number',
                         minimum: 1,
                         maximum: 10000,
                         default: 100,
-                        description: 'Maximum number of matches to return'
-                    },
-                    jsonStyle: {
-                        type: 'string',
-                        enum: ['stream', 'pretty', 'compact'],
-                        default: 'stream',
-                        description: 'JSON output format to request from ast-grep'
-                    },
-                    follow: {
-                        type: 'boolean',
-                        default: false,
-                        description: 'Follow symlinks during search'
-                    },
-                    threads: {
-                        type: 'number',
-                        minimum: 1,
-                        maximum: 64,
-                        description: 'Number of threads to use'
-                    },
-                    timeoutMs: {
-                        type: 'number',
-                        minimum: 1000,
-                        maximum: 120000,
-                        description: 'Timeout for ast-grep execution in milliseconds (default 30000)'
-                    },
-                    relativePaths: {
-                        type: 'boolean',
-                        default: false,
-                        description: 'Return file paths relative to workspace root'
+                        description: 'Maximum number of matches to return across all files. Helps prevent overwhelming results from large codebases.'
                     },
                     perFileMatchLimit: {
                         type: 'number',
                         minimum: 1,
                         maximum: 1000,
-                        description: 'Limit number of matches per file'
+                        description: 'Limit number of matches per file. Useful when searching large files to avoid too many results from a single file.'
+                    },
+                    follow: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Follow symlinks during file search'
+                    },
+                    threads: {
+                        type: 'number',
+                        minimum: 1,
+                        maximum: 64,
+                        description: 'Number of threads to use for parallel processing (default: auto)'
+                    },
+                    timeoutMs: {
+                        type: 'number',
+                        minimum: 1000,
+                        maximum: 120000,
+                        description: 'Timeout for ast-grep execution in milliseconds (default: 30000)'
+                    },
+                    relativePaths: {
+                        type: 'boolean',
+                        default: false,
+                        description: 'Return file paths relative to workspace root instead of absolute paths'
                     },
                     noIgnore: {
                         type: 'boolean',
                         default: false,
-                        description: 'Disable ignore rules (use carefully)'
+                        description: 'Disable ignore rules and search all files including node_modules, .git, etc. Use with caution as it may search large amounts of files and hit resource limits.'
                     },
                     ignorePath: {
                         type: 'array',
                         items: { type: 'string' },
-                        description: 'Additional ignore file(s) to respect'
+                        description: 'Additional ignore file(s) to respect beyond default .gitignore patterns'
                     },
                     root: {
                         type: 'string',
-                        description: 'Override project root used by ast-grep'
+                        description: 'Override project root used by ast-grep. Note: May not work as expected due to ast-grep command limitations.'
                     },
                     workdir: {
                         type: 'string',
-                        description: 'Working directory for ast-grep'
-                    },
-                    code: {
-                        type: 'string',
-                        description: 'Search code provided via stdin instead of reading files (requires language)'
+                        description: 'Working directory for ast-grep. Note: May not work as expected due to ast-grep command limitations.'
                     },
                     stdinFilepath: {
                         type: 'string',
-                        description: 'Virtual filepath for stdin content, used for language/ignore resolution'
+                        description: 'Virtual filepath for stdin content when using "code" parameter, used for language/ignore resolution'
                     }
                 },
                 required: ['pattern']

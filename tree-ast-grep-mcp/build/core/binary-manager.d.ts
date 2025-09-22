@@ -27,5 +27,6 @@ export declare class AstGrepBinaryManager {
         stdout: string;
         stderr: string;
     }>;
+    private getExecutionCommand;
 }
 //# sourceMappingURL=binary-manager.d.ts.map

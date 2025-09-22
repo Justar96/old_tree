@@ -10,6 +10,7 @@ export declare class ReplaceTool {
     private createBackups;
     private buildReplaceArgs;
     private parseReplaceResults;
+    private parseDiffOutput;
     static getSchema(): {
         name: string;
         description: string;
@@ -21,6 +22,10 @@ export declare class ReplaceTool {
                     description: string;
                 };
                 replacement: {
+                    type: string;
+                    description: string;
+                };
+                code: {
                     type: string;
                     description: string;
                 };
@@ -70,12 +75,6 @@ export declare class ReplaceTool {
                     default: boolean;
                     description: string;
                 };
-                jsonStyle: {
-                    type: string;
-                    enum: string[];
-                    default: string;
-                    description: string;
-                };
                 follow: {
                     type: string;
                     default: boolean;
@@ -104,10 +103,6 @@ export declare class ReplaceTool {
                     description: string;
                 };
                 workdir: {
-                    type: string;
-                    description: string;
-                };
-                code: {
                     type: string;
                     description: string;
                 };

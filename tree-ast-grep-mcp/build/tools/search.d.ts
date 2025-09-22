@@ -12,6 +12,8 @@ export declare class SearchTool {
     private processJsonRecord;
     private parseSingleMatch;
     private extractFilesScanned;
+    private countFilesInPaths;
+    private countFilesInDirectory;
     static getSchema(): {
         name: string;
         description: string;
@@ -19,6 +21,10 @@ export declare class SearchTool {
             type: string;
             properties: {
                 pattern: {
+                    type: string;
+                    description: string;
+                };
+                code: {
                     type: string;
                     description: string;
                 };
@@ -61,10 +67,10 @@ export declare class SearchTool {
                     default: number;
                     description: string;
                 };
-                jsonStyle: {
+                perFileMatchLimit: {
                     type: string;
-                    enum: string[];
-                    default: string;
+                    minimum: number;
+                    maximum: number;
                     description: string;
                 };
                 follow: {
@@ -89,12 +95,6 @@ export declare class SearchTool {
                     default: boolean;
                     description: string;
                 };
-                perFileMatchLimit: {
-                    type: string;
-                    minimum: number;
-                    maximum: number;
-                    description: string;
-                };
                 noIgnore: {
                     type: string;
                     default: boolean;
@@ -112,10 +112,6 @@ export declare class SearchTool {
                     description: string;
                 };
                 workdir: {
-                    type: string;
-                    description: string;
-                };
-                code: {
                     type: string;
                     description: string;
                 };

@@ -14,6 +14,8 @@ export declare class ScanTool {
     private parseScanResults;
     private parseSingleFinding;
     private extractFilesScanned;
+    private countFilesInPaths;
+    private countFilesInDirectory;
     static getSchema(): {
         name: string;
         description: string;
@@ -75,12 +77,6 @@ export declare class ScanTool {
                     default: boolean;
                     description: string;
                 };
-                jsonStyle: {
-                    type: string;
-                    enum: string[];
-                    default: string;
-                    description: string;
-                };
                 follow: {
                     type: string;
                     default: boolean;
@@ -113,6 +109,7 @@ export declare class ScanTool {
                     description: string;
                 };
             };
+            required: string[];
         };
     };
 }
