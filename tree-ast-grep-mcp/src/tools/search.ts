@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import * as path from 'path';
 import * as fsSync from 'fs';
+import * as fs from 'fs/promises';
 import { AstGrepBinaryManager } from '../core/binary-manager.js';
 import { WorkspaceManager } from '../core/workspace-manager.js';
 import { BaseTool } from '../core/tool-base.js';
@@ -61,14 +62,18 @@ export class SearchTool extends BaseTool {
       // Execute ast-grep (stdin if code provided)
       let result;
       if (sanitizedParams.code) {
+        // For stdin mode, language is critical for parsing
+        if (!sanitizedParams.language) {
+          throw new ValidationError('Language must be specified when using inline code', {
+            errors: ['Language parameter is required for stdin mode. Specify language like "python", "javascript", "typescript", etc.'],
+            params: sanitizedParams
+          });
+        }
+        
         const stdinArgs = [...args];
         stdinArgs.push('--stdin');
         if (sanitizedParams.stdinFilepath) {
           stdinArgs.push('--stdin-filepath', sanitizedParams.stdinFilepath);
-        }
-        // ast-grep expects language for stdin to parse correctly
-        if (sanitizedParams.language) {
-          // already added earlier
         }
         result = await this.binaryManager.executeAstGrep(stdinArgs, {
           cwd: this.workspaceManager.getWorkspaceRoot(),
@@ -84,7 +89,7 @@ export class SearchTool extends BaseTool {
       }
 
       // Parse results
-      const matches = this.parseSearchResults(result.stdout, sanitizedParams, this.getWorkspaceRoot());
+      const matches = await this.parseSearchResults(result.stdout, sanitizedParams, this.getWorkspaceRoot());
       const filesScanned = this.extractFilesScanned(result.stderr, matches, resolvedPaths);
 
       return {
@@ -123,7 +128,7 @@ export class SearchTool extends BaseTool {
    * Convert validated parameters into ast-grep CLI arguments.
    */
   private buildSearchArgs(params: SearchParams, resolvedPaths: string[]): string[] {
-    const args: string[] = [];
+    const args: string[] = ['run'];
 
     // Add pattern (required)
     args.push('--pattern', params.pattern);
@@ -149,7 +154,7 @@ export class SearchTool extends BaseTool {
   /**
    * Parse ast-grep JSON output into structured match records.
    */
-  private parseSearchResults(stdout: string, params: SearchParams, workspaceRoot: string): SearchResult['matches'] {
+  private async parseSearchResults(stdout: string, params: SearchParams, workspaceRoot: string): Promise<SearchResult['matches']> {
     const matches: SearchResult['matches'] = [];
     const perFileLimit = params.perFileMatchLimit ?? undefined;
     const fileToCount = new Map<string, number>();
@@ -164,17 +169,17 @@ export class SearchTool extends BaseTool {
         const lines = stdout.trim().split('\n');
         for (const line of lines) {
           if (!line.trim()) continue;
-          this.processJsonRecord(JSON.parse(line), matches, fileToCount, perFileLimit, params, workspaceRoot);
+          await this.processJsonRecord(JSON.parse(line), matches, fileToCount, perFileLimit, params, workspaceRoot);
         }
       } else {
         // Non-stream: expect JSON array or object with matches
         const parsed = JSON.parse(stdout);
         if (Array.isArray(parsed)) {
           for (const record of parsed) {
-            this.processJsonRecord(record, matches, fileToCount, perFileLimit, params, workspaceRoot);
+            await this.processJsonRecord(record, matches, fileToCount, perFileLimit, params, workspaceRoot);
           }
         } else {
-          this.processJsonRecord(parsed, matches, fileToCount, perFileLimit, params, workspaceRoot);
+          await this.processJsonRecord(parsed, matches, fileToCount, perFileLimit, params, workspaceRoot);
         }
       }
     } catch (error) {
@@ -186,10 +191,10 @@ export class SearchTool extends BaseTool {
     return matches;
   }
 
-  private processJsonRecord(result: any, matches: SearchResult['matches'], fileToCount: Map<string, number>, perFileLimit: number | undefined, params: SearchParams, workspaceRoot: string): void {
+  private async processJsonRecord(result: any, matches: SearchResult['matches'], fileToCount: Map<string, number>, perFileLimit: number | undefined, params: SearchParams, workspaceRoot: string): Promise<void> {
     if (result.matches) {
       for (const match of result.matches) {
-        const parsed = this.parseSingleMatch(match, params, workspaceRoot);
+        const parsed = await this.parseSingleMatch(match, params, workspaceRoot);
         if (perFileLimit) {
           const current = fileToCount.get(parsed.file) || 0;
           if (current >= perFileLimit) continue;
@@ -198,7 +203,7 @@ export class SearchTool extends BaseTool {
         matches.push(parsed);
       }
     } else if (result.file) {
-      const parsed = this.parseSingleMatch(result, params, workspaceRoot);
+      const parsed = await this.parseSingleMatch(result, params, workspaceRoot);
       if (perFileLimit) {
         const current = fileToCount.get(parsed.file) || 0;
         if (current < perFileLimit) {
@@ -211,7 +216,7 @@ export class SearchTool extends BaseTool {
     }
   }
 
-  private parseSingleMatch(match: any, params: SearchParams, workspaceRoot: string): SearchResult['matches'][0] {
+  private async parseSingleMatch(match: any, params: SearchParams, workspaceRoot: string): Promise<SearchResult['matches'][0]> {
     // Use BaseTool's consistent path normalization
     const filePath = this.normalizePath(match.file || '', params.relativePaths);
 
@@ -256,6 +261,23 @@ export class SearchTool extends BaseTool {
       normalizedEndLine = normalizedLine;
     }
 
+    // Extract context lines from file when requested and context is empty from ast-grep
+    let contextBefore = match.context?.before || [];
+    let contextAfter = match.context?.after || [];
+    
+    // If context is requested but empty, and we have a real file (not stdin), extract context manually
+    if ((params.context ?? 0) > 0 && contextBefore.length === 0 && contextAfter.length === 0 && 
+        filePath && !params.code && normalizedLine > 0) {
+      try {
+        const extractedContext = await this.extractContextLines(filePath, normalizedLine, normalizedEndLine || normalizedLine, params.context || 0);
+        contextBefore = extractedContext.before;
+        contextAfter = extractedContext.after;
+      } catch (error) {
+        // Context extraction failed, but don't fail the entire match
+        console.warn(`Failed to extract context for ${filePath}:${normalizedLine}:`, error);
+      }
+    }
+
     return {
       file: filePath,
       line: normalizedLine,
@@ -264,8 +286,8 @@ export class SearchTool extends BaseTool {
       endColumn: match.range?.end?.column !== undefined ? Number(match.range.end.column) : undefined,
       text: match.text || match.lines || '',
       context: {
-        before: match.context?.before || [],
-        after: match.context?.after || []
+        before: contextBefore,
+        after: contextAfter
       },
       matchedNode: match.text || match.lines || '',
       captures
@@ -370,6 +392,33 @@ export class SearchTool extends BaseTool {
     return count;
   }
 
+  /**
+   * Extract context lines from a file around a specific line range.
+   */
+  private async extractContextLines(filePath: string, startLine: number, endLine: number, contextSize: number): Promise<{ before: string[], after: string[] }> {
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const lines = content.split(/\r?\n/);
+      
+      // Convert to 0-based indexing for array access
+      const startIdx = Math.max(0, startLine - 1);
+      const endIdx = Math.min(lines.length - 1, endLine - 1);
+      
+      // Extract before context
+      const beforeStart = Math.max(0, startIdx - contextSize);
+      const before = lines.slice(beforeStart, startIdx);
+      
+      // Extract after context
+      const afterEnd = Math.min(lines.length, endIdx + 1 + contextSize);
+      const after = lines.slice(endIdx + 1, afterEnd);
+      
+      return { before, after };
+    } catch (error) {
+      // Return empty context if file can't be read
+      return { before: [], after: [] };
+    }
+  }
+
   // Get tool schema for MCP
   /**
    * Describe the MCP tool schema exposed to clients.
@@ -383,7 +432,7 @@ export class SearchTool extends BaseTool {
         properties: {
           pattern: {
             type: 'string',
-            description: 'AST pattern to search for using ast-grep syntax. Use metavariables: $VAR (single node), $$$ (multi-node), $NAME (capture names). LANGUAGE EXAMPLES - JavaScript: "console.log($_)", "function $NAME($ARGS) { $$$ }", "const $NAME = ($ARGS) => $EXPR", "await $PROMISE", "$OBJ.$METHOD($_)". Python: "def $NAME($ARGS): $$$", "class $NAME($BASE): $$$", "import $MODULE", "for $VAR in $ITER: $$$". Java: "public $TYPE $METHOD($ARGS) { $$$ }", "@$ANNOTATION class $NAME { $$$ }", "new $CLASS($ARGS)". Advanced: Use patterns like "if ($COND) { console.log($_) }" for conditional matches.'
+            description: 'AST pattern using ast-grep syntax. ✅ ATOMIC PATTERNS: "console.log($ARG)" (function calls), "function $NAME($PARAMS) { $BODY }" (function declarations), "$OBJ.$METHOD($_)" (method calls), "await $PROMISE" (async patterns). ✅ RELATIONAL PATTERNS: Use context for complex matching - "{ key: value }" with selector "pair" for ambiguous patterns. ✅ COMPOSITE PATTERNS: Combine with all/any/not logic. ✅ LANGUAGE EXAMPLES - JavaScript: "console.log($ARG)", "const $NAME = ($PARAMS) => $EXPR", "if ($COND) { $$$ }". Python: "def $NAME($PARAMS): $BODY", "class $NAME($BASE): $BODY", "import $MODULE as $ALIAS". Java: "public $TYPE $METHOD($PARAMS) { $BODY }", "@$ANNOTATION class $NAME". ⚠️ METAVARIABLE RELIABILITY: Named vars ($NAME, $FUNC) work in search & replace. $_ and $$$ work in search only - avoid in replacements.'
           },
           code: {
             type: 'string',
@@ -392,7 +441,7 @@ export class SearchTool extends BaseTool {
           paths: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Files/directories to search. Can use relative paths (e.g., "src/", "lib/*.js") or absolute paths (e.g., "D:\\path\\to\\file.js"). Default: current directory if not specified.'
+            description: '⚠️ PATH REQUIREMENTS: REQUIRED: Use absolute paths for reliable file operations (e.g., "D:\\path\\to\\file.js"). ❌ FAILS: Relative paths like "src/" may not resolve correctly due to workspace detection issues. ✅ WORKS: Absolute paths like "d:/project/src/file.ts" for reliable file resolution. Default: current directory if not specified.'
           },
           language: {
             type: 'string',

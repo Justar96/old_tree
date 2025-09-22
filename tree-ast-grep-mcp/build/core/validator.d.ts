@@ -22,10 +22,6 @@ export declare class ParameterValidator {
      */
     validateReplaceParams(params: any): ValidationResult;
     /**
-     * Validate scan tool parameters and normalize rule execution options.
-     */
-    validateScanParams(params: any): ValidationResult;
-    /**
      * Validate rewrite tool parameters including pattern and rewrite rules.
      */
     validateRewriteParams(params: any): ValidationResult;

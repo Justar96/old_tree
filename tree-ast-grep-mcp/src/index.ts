@@ -8,10 +8,9 @@ import { InstallationOptions } from './types/errors.js';
 import { WorkspaceManager } from './core/workspace-manager.js';
 import { SearchTool } from './tools/search.js';
 import { ReplaceTool } from './tools/replace.js';
-import { ScanTool } from './tools/scan.js';
 import { RunRuleTool } from './tools/rule-builder.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
-import { SearchParams, ReplaceParams, ScanParams, RunRuleParams } from './types/schemas.js';
+import { SearchParams, ReplaceParams, RunRuleParams } from './types/schemas.js';
 
 /**
  * Parse CLI arguments and environment variables into installation options.
@@ -112,8 +111,7 @@ async function main(): Promise<void> {
     // Initialize tools
     const searchTool = new SearchTool(binaryManager, workspaceManager);
     const replaceTool = new ReplaceTool(binaryManager, workspaceManager);
-    const scanTool = new ScanTool(binaryManager, workspaceManager);
-    const ruleRunnerTool = new RunRuleTool(workspaceManager, scanTool);
+    const ruleRunnerTool = new RunRuleTool(workspaceManager, binaryManager);
 
     // Create MCP server
     const server = new Server(
@@ -134,7 +132,6 @@ async function main(): Promise<void> {
         tools: [
           SearchTool.getSchema(),
           ReplaceTool.getSchema(),
-          ScanTool.getSchema(),
           RunRuleTool.getSchema(),
         ],
       };
@@ -168,16 +165,6 @@ async function main(): Promise<void> {
               ],
             };
 
-          case 'ast_scan':
-            const scanResult = await scanTool.execute(args as ScanParams);
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(scanResult, null, 2),
-                },
-              ],
-            };
 
           case 'ast_run_rule':
             const ruleResult = await ruleRunnerTool.execute(args as RunRuleParams);

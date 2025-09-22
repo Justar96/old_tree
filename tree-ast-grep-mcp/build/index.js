@@ -6,7 +6,6 @@ import { AstGrepBinaryManager } from './core/binary-manager.js';
 import { WorkspaceManager } from './core/workspace-manager.js';
 import { SearchTool } from './tools/search.js';
 import { ReplaceTool } from './tools/replace.js';
-import { ScanTool } from './tools/scan.js';
 import { RunRuleTool } from './tools/rule-builder.js';
 import { BinaryError, ValidationError, ExecutionError } from './types/errors.js';
 /**
@@ -101,8 +100,7 @@ async function main() {
         // Initialize tools
         const searchTool = new SearchTool(binaryManager, workspaceManager);
         const replaceTool = new ReplaceTool(binaryManager, workspaceManager);
-        const scanTool = new ScanTool(binaryManager, workspaceManager);
-        const ruleRunnerTool = new RunRuleTool(workspaceManager, scanTool);
+        const ruleRunnerTool = new RunRuleTool(workspaceManager, binaryManager);
         // Create MCP server
         const server = new Server({
             name: 'tree-ast-grep',
@@ -118,7 +116,6 @@ async function main() {
                 tools: [
                     SearchTool.getSchema(),
                     ReplaceTool.getSchema(),
-                    ScanTool.getSchema(),
                     RunRuleTool.getSchema(),
                 ],
             };
@@ -145,16 +142,6 @@ async function main() {
                                 {
                                     type: 'text',
                                     text: JSON.stringify(replaceResult, null, 2),
-                                },
-                            ],
-                        };
-                    case 'ast_scan':
-                        const scanResult = await scanTool.execute(args);
-                        return {
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: JSON.stringify(scanResult, null, 2),
                                 },
                             ],
                         };

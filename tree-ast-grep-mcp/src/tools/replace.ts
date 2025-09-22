@@ -69,6 +69,16 @@ export class ReplaceTool {
       await this.createBackups(pathValidation.resolvedPaths);
     }
 
+    // Validate metavariable consistency between pattern and replacement
+    const metavarValidation = this.validateMetavariableConsistency(sanitizedParams.pattern, sanitizedParams.replacement);
+    if (!metavarValidation.valid) {
+      throw new ValidationError('Metavariable consistency check failed', {
+        errors: metavarValidation.errors,
+        warnings: metavarValidation.warnings,
+        params: sanitizedParams
+      });
+    }
+
     try {
       // Build ast-grep command arguments
       const args = this.buildReplaceArgs(sanitizedParams, pathValidation.resolvedPaths);
@@ -77,6 +87,14 @@ export class ReplaceTool {
       let result;
       const timeout = sanitizedParams.dryRun ? (sanitizedParams.timeoutMs ?? 30000) : (sanitizedParams.timeoutMs ?? 60000);
       if (sanitizedParams.code) {
+        // For stdin mode, language is critical for parsing
+        if (!sanitizedParams.language) {
+          throw new ValidationError('Language must be specified when using inline code', {
+            errors: ['Language parameter is required for stdin mode. Specify language like "python", "javascript", "typescript", etc.'],
+            params: sanitizedParams
+          });
+        }
+        
         const stdinArgs = [...args, '--stdin'];
         if (sanitizedParams.stdinFilepath) {
           stdinArgs.push('--stdin-filepath', sanitizedParams.stdinFilepath);
@@ -145,7 +163,7 @@ export class ReplaceTool {
   }
 
   private buildReplaceArgs(params: ReplaceParams, resolvedPaths: string[]): string[] {
-    const args: string[] = [];
+    const args: string[] = ['run'];
 
     // Add pattern (required)
     args.push('--pattern', params.pattern);
@@ -341,6 +359,68 @@ export class ReplaceTool {
     return blocks;
   }
 
+  /**
+   * Validate that metavariables in replacement match those captured in pattern.
+   */
+  private validateMetavariableConsistency(pattern: string, replacement: string): { valid: boolean, errors: string[], warnings: string[] } {
+    const result: { valid: boolean, errors: string[], warnings: string[] } = { valid: true, errors: [], warnings: [] };
+
+    // Extract metavariables from pattern and replacement
+    const patternSingle = [...pattern.matchAll(/\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
+    const patternMulti = [...pattern.matchAll(/\$\$\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
+    const patternBare = (pattern.match(/\$\$\$(?![A-Z_])/g) || []).length > 0;
+    
+    const replacementSingle = [...replacement.matchAll(/\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
+    const replacementMulti = [...replacement.matchAll(/\$\$\$([A-Z_][A-Z0-9_]*)/g)].map(m => m[1]);
+    const replacementBare = (replacement.match(/\$\$\$(?![A-Z_])/g) || []).length > 0;
+    
+    const allPatternVars = [...new Set([...patternSingle, ...patternMulti])];
+    const allReplacementVars = [...new Set([...replacementSingle, ...replacementMulti])];
+    
+    // Check for bare $$$ in replacement
+    if (replacementBare) {
+      if (patternBare) {
+        result.warnings.push('Using bare $$$ in both pattern and replacement. Consider using named metavariables for clarity.');
+      } else if (patternMulti.length > 0) {
+        result.errors.push(`Replacement uses bare $$$ but pattern has named multi-metavariables: ${patternMulti.map(v => '$$$' + v).join(', ')}. Use matching named metavariable in replacement.`);
+        result.valid = false;
+      } else {
+        result.errors.push('Replacement uses bare $$$ but pattern has no multi-metavariables. Remove $$$ or add matching pattern.');
+        result.valid = false;
+      }
+    }
+    
+    // Check that all replacement metavariables exist in pattern
+    const undefinedVars = allReplacementVars.filter(rv => !allPatternVars.includes(rv) && rv !== '_');
+    if (undefinedVars.length > 0) {
+      result.valid = false;
+      result.errors.push(`Replacement uses undefined metavariables: ${undefinedVars.map(v => '$' + v).join(', ')}. Available from pattern: ${allPatternVars.map(v => '$' + v).join(', ')}`);
+    }
+    
+    // Warn about unused pattern variables (except _)
+    const unusedVars = allPatternVars.filter(pv => !allReplacementVars.includes(pv) && pv !== '_');
+    if (unusedVars.length > 0) {
+      result.warnings.push(`Pattern captures unused metavariables: ${unusedVars.map(v => '$' + v).join(', ')}. Consider using them in replacement or remove from pattern.`);
+    }
+    
+    // Check for mismatched multi-metavariable types
+    for (const multiVar of replacementMulti) {
+      if (patternSingle.includes(multiVar)) {
+        result.errors.push(`Replacement uses $$$${multiVar} but pattern captures it as single metavariable $${multiVar}. Use $${multiVar} in replacement.`);
+        result.valid = false;
+      }
+    }
+    
+    for (const singleVar of replacementSingle) {
+      if (patternMulti.includes(singleVar)) {
+        result.errors.push(`Replacement uses $${singleVar} but pattern captures it as multi-metavariable $$$${singleVar}. Use $$$${singleVar} in replacement.`);
+        result.valid = false;
+      }
+    }
+    
+    return result;
+  }
+
   // Get tool schema for MCP
   /**
    * Describe the MCP schema for the replace tool.
@@ -348,17 +428,17 @@ export class ReplaceTool {
   static getSchema() {
     return {
       name: 'ast_replace',
-      description: 'Perform structural find-and-replace operations using AST patterns. Supports simple text replacement, metavariable capture, and multi-node patterns. BEST PRACTICE: Use "code" parameter for inline replacement (most reliable) or absolute paths for file-based replacement.',
+      description: 'Perform structural find-and-replace operations using AST patterns. Supports simple text replacement, metavariable capture, and multi-node patterns. BEST PRACTICE: Use "code" parameter for inline replacement (most reliable) or absolute paths for file-based replacement. ⚠️ CRITICAL LIMITATIONS: $_  metavariables lose arguments during substitution, $$$ metavariables show literal "$$$" instead of actual content. RELIABLE: Use named metavariables like $NAME, $FUNC, $ARG for consistent results.',
       inputSchema: {
         type: 'object',
         properties: {
           pattern: {
             type: 'string',
-            description: 'AST pattern to match using ast-grep syntax. Use metavariables: $VAR (single node), $$$ (multi-node), $NAME (capture names). Examples: "console.log($_)" (any console.log), "var $NAME" (var declarations), "console.log($$$)" (console.log with any args), "function $NAME($ARGS)" (function definitions).'
+            description: 'AST pattern to match using ast-grep syntax. ✅ PROVEN CATALOG PATTERNS - JavaScript: "console.log($ARG)" → "logger.info($ARG)", "function $NAME($PARAMS) { $BODY }" → "const $NAME = ($PARAMS) => { $BODY }", "var $NAME" → "let $NAME". Python: "def $NAME($PARAMS): $BODY" → "async def $NAME($PARAMS): $BODY". Java: "public $TYPE $METHOD($PARAMS) { $BODY }" → "private $TYPE $METHOD($PARAMS) { $BODY }". ✅ RELIABLE METAVARIABLES: $NAME, $FUNC, $ARG, $PARAMS, $BODY work in both search & replace. ❌ UNRELIABLE: $_ loses content, $$$ shows literal "$$$" in replacement.'
           },
           replacement: {
             type: 'string',
-            description: 'Replacement template using same metavariables as pattern. Examples: "logger.info($_)" (replace console.log with logger.info), "let $NAME" (replace var with let), "logger.info($$$)" (replace console.log with logger.info keeping args), "const $NAME = ($ARGS) =>" (replace function with arrow function).'
+            description: 'Replacement template using same metavariables as pattern. ✅ PROVEN CATALOG REPLACEMENTS: "logger.info($ARG)" (console.log migration), "const $NAME = ($PARAMS) => { $BODY }" (arrow function conversion), "async def $NAME($PARAMS): $BODY" (Python async migration), "private $TYPE $METHOD($PARAMS) { $BODY }" (Java visibility change). ✅ RELIABLE PATTERN: Use named metavariables ($NAME, $ARG, $PARAMS, $BODY) that match exactly what the pattern captures. ❌ CRITICAL: Never use $_ or $$$ in replacement templates - they will fail or show literal text.'
           },
           code: {
             type: 'string',
@@ -367,7 +447,7 @@ export class ReplaceTool {
           paths: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Files/directories to process. IMPORTANT: Use absolute paths for file-based replacement (e.g., "D:\\path\\to\\file.js"). Relative paths may not resolve correctly due to workspace detection issues.'
+            description: '⚠️ PATH REQUIREMENTS: REQUIRED: Use absolute paths for file operations (e.g., "D:\\path\\to\\file.js"). ❌ FAILS: Relative paths like "src/file.ts" may not resolve correctly due to workspace detection issues. ✅ WORKS: Absolute paths like "d:/project/src/file.ts" for reliable file resolution.'
           },
           language: {
             type: 'string',

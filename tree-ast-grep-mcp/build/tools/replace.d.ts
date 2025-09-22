@@ -21,6 +21,10 @@ export declare class ReplaceTool {
     private parseReplaceResults;
     private parseDiffOutput;
     /**
+     * Validate that metavariables in replacement match those captured in pattern.
+     */
+    private validateMetavariableConsistency;
+    /**
      * Describe the MCP schema for the replace tool.
      */
     static getSchema(): {

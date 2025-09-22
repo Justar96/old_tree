@@ -118,20 +118,40 @@ Performs structural find-and-replace operations.
 
 **Returns:** Summary of changes made or preview.
 
-### ast_scan
+### ast_run_rule
 
-Scans code with ast-grep rules for analysis.
+Generates and immediately executes custom ast-grep rules.
 
 **Parameters:**
-- `rules` (string, optional): Rules file path or inline YAML
+- `id` (string, required): Unique rule identifier
+- `language` (string, required): Programming language
+- `pattern` (string, required): AST pattern to match
+- `message` (string, optional): Human-readable message
+- `severity` (string, optional): Rule severity level ('error', 'warning', 'info')
 - `paths` (string[], optional): Target files/directories
-- `format` (string, optional): Output format ('json', 'text', 'github')
-- `severity` (string, optional): Filter by severity
-- `ruleIds` (string[], optional): Specific rule IDs
 - `include` (string[], optional): Include glob patterns
 - `exclude` (string[], optional): Exclude glob patterns
+- `fix` (string, optional): Auto-fix replacement template
 
-**Returns:** Analysis results with findings and metadata.
+**Returns:** Generated YAML rule and execution results.
+
+## ⚠️ Important: Pattern Reliability & Examples
+
+For reliable pattern matching and replacement operations, please review these essential guides:
+
+### [Pattern Examples Guide](./PATTERN_EXAMPLES.md) 🔍
+- **Official ast-grep catalog patterns** - Production-tested examples
+- **Language-specific patterns** - JavaScript, Python, Java, and more
+- **Atomic, Relational & Composite rules** - From simple to advanced
+- **Real-world migration patterns** - Console logging, function conversion, etc.
+
+### [Metavariable Reliability Matrix](./METAVARIABLE_RELIABILITY.md) ⚠️
+- **Critical reliability information** - Which patterns work in search vs replace
+- **Common pitfalls** with `$_` and `$$$` metavariables 
+- **Proven working examples** - Reliable patterns for consistent results
+- **Troubleshooting guide** - Fix failed replacements
+
+**Quick Summary**: Always use named metavariables like `$NAME`, `$FUNC`, `$ARG` in replacement operations. Start with [official catalog patterns](./PATTERN_EXAMPLES.md) for best results.
 
 ## Configuration Options
 

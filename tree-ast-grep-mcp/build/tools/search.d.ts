@@ -28,6 +28,10 @@ export declare class SearchTool extends BaseTool {
     private countFilesInPaths;
     private countFilesInDirectory;
     /**
+     * Extract context lines from a file around a specific line range.
+     */
+    private extractContextLines;
+    /**
      * Describe the MCP tool schema exposed to clients.
      */
     static getSchema(): {

@@ -41,17 +41,41 @@ export class AstGrepErrorTranslator {
       // Provide specific suggestions based on common pattern issues
       if (pattern.includes('$')) {
         if (pattern.match(/\$[a-z]/)) {
-          suggestion = ' Metavariables must use UPPERCASE letters (e.g., $VAR, not $var).';
+          suggestion = ' Metavariables must use UPPERCASE letters (e.g., $VAR, not $var). See https://ast-grep.github.io/guide/pattern-syntax.html#meta-variable';
         } else if (pattern.includes('$$') && !pattern.includes('$$$')) {
-          suggestion = ' Use $$$ for multi-node matching, not $$.';
+          suggestion = ' Use $$$ for multi-node matching, not $$. See https://ast-grep.github.io/guide/pattern-syntax.html#multi-meta-variable';
+        } else if (pattern.includes('$$$') && !pattern.match(/\$\$\$[A-Z_]/)) {
+          suggestion = ' Consider using named multi-metavariables ($$$ARGS, $$$BODY) for better rewrite compatibility.';
         }
+      }
+
+      // Python-specific pattern suggestions
+      if (pattern.includes('class') && pattern.includes(':') && !pattern.includes('$$$')) {
+        suggestion += ' Python class patterns need body: use "class $NAME: $$$".';
+      }
+      if (pattern.includes('except') && pattern.includes(':') && !pattern.includes('$$$')) {
+        suggestion += ' Python except patterns need body: use "except $EXCEPTION as $VAR:\\n    $$$".';
+      }
+      if (pattern.includes('def') && pattern.includes(':') && !pattern.includes('$$$')) {
+        suggestion += ' Python function patterns need body: use "def $NAME($ARGS): $$$".';
+      }
+
+      // JavaScript-specific pattern suggestions
+      if (pattern.includes('function') && pattern.includes('{') && !pattern.includes('$$$')) {
+        suggestion += ' JavaScript function patterns need body: use "function $NAME($ARGS) { $$$ }".';
+      }
+      if (pattern.includes('class') && pattern.includes('{') && !pattern.includes('$$$')) {
+        suggestion += ' JavaScript class patterns need body: use "class $NAME { $$$ }".';
+      }
+      if (pattern.includes('try') && pattern.includes('{') && !pattern.includes('$$$')) {
+        suggestion += ' JavaScript try patterns need body: use "try { $$$ }".';
       }
 
       if (pattern.includes('{') && !pattern.includes('}')) {
         suggestion = ' Check for unmatched braces in your pattern.';
       }
 
-      return `Invalid AST pattern syntax: "${pattern}".${suggestion} Pattern must be valid code that tree-sitter can parse. Use ast-grep playground to test patterns.`;
+      return `Invalid AST pattern syntax: "${pattern}".${suggestion} Pattern must be valid code that tree-sitter can parse. Use ast-grep playground (https://ast-grep.github.io/playground.html) to test patterns, or check the pattern syntax guide: https://ast-grep.github.io/guide/pattern-syntax.html`;
     }
 
     // Enhanced language detection with specific suggestions

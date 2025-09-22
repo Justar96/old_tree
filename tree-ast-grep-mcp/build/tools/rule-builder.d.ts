@@ -1,12 +1,10 @@
-import { WorkspaceManager } from '../core/workspace-manager.js';
+import { BaseTool } from '../core/tool-base.js';
 import { ScanResult, RunRuleParams } from '../types/schemas.js';
-import { ScanTool } from './scan.js';
-export declare class RunRuleTool {
-    private validator;
+import { WorkspaceManager } from '../core/workspace-manager.js';
+import { AstGrepBinaryManager } from '../core/binary-manager.js';
+export declare class RunRuleTool extends BaseTool {
     private patternValidator;
-    private scanTool;
-    private workspaceManager;
-    constructor(workspaceManager: WorkspaceManager, scanTool: ScanTool);
+    constructor(workspaceManager: WorkspaceManager, binaryManager: AstGrepBinaryManager);
     static getSchema(): {
         name: string;
         description: string;
@@ -175,5 +173,29 @@ export declare class RunRuleTool {
         savedPath?: string;
     }>;
     private buildYaml;
+    /**
+     * Execute the generated YAML rule directly using ast-grep
+     */
+    private executeRule;
+    /**
+     * Build ast-grep scan command arguments
+     */
+    private buildScanArgs;
+    /**
+     * Parse ast-grep scan results into ScanResult format
+     */
+    private parseScanResults;
+    /**
+     * Parse a single finding from ast-grep output
+     */
+    private parseSingleFinding;
+    /**
+     * Extract files scanned count from stderr output
+     */
+    private extractFilesScanned;
+    /**
+     * Count files in given paths for file scanning metrics
+     */
+    private countFilesInPaths;
 }
 //# sourceMappingURL=rule-builder.d.ts.map

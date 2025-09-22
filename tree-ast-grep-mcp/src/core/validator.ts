@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ValidationResult, ValidationError, SecurityError } from '../types/errors.js';
-import { SearchParams, ReplaceParams, ScanParams, RewriteParams, RuleBuilderParams } from '../types/schemas.js';
+import { SearchParams, ReplaceParams, RewriteParams, RuleBuilderParams } from '../types/schemas.js';
 
 /**
  * Validates tool parameters against workspace boundaries and security policies.
@@ -287,93 +287,6 @@ export class ParameterValidator {
     return result;
   }
 
-  // Validate scan parameters
-  /**
-   * Validate scan tool parameters and normalize rule execution options.
-   */
-  validateScanParams(params: any): ValidationResult {
-    const result: ValidationResult = { valid: true, errors: [], warnings: [] };
-
-    // Validate format
-    if (params.format && !['json', 'text', 'github'].includes(params.format)) {
-      result.valid = false;
-      result.errors.push('Format must be one of: json, text, github');
-    }
-
-    // Validate severity
-    if (params.severity && !['error', 'warning', 'info', 'all'].includes(params.severity)) {
-      result.valid = false;
-      result.errors.push('Severity must be one of: error, warning, info, all');
-    }
-
-    // Validate paths if provided
-    if (params.paths) {
-      const pathValidation = this.validatePaths(params.paths);
-      if (!pathValidation.valid) {
-        result.valid = false;
-        result.errors.push(...pathValidation.errors);
-      }
-    }
-
-    // Advanced validations
-    if (params.timeoutMs !== undefined && (typeof params.timeoutMs !== 'number' || params.timeoutMs < 1000 || params.timeoutMs > 180000)) {
-      result.valid = false;
-      result.errors.push('timeoutMs must be between 1000 and 180000 milliseconds');
-    }
-    if (params.relativePaths !== undefined && typeof params.relativePaths !== 'boolean') {
-      result.valid = false;
-      result.errors.push('relativePaths must be a boolean');
-    }
-    if (params.jsonStyle !== undefined && !['stream', 'pretty', 'compact'].includes(params.jsonStyle)) {
-      result.valid = false;
-      result.errors.push('jsonStyle must be one of: stream, pretty, compact');
-    }
-    if (params.follow !== undefined && typeof params.follow !== 'boolean') {
-      result.valid = false;
-      result.errors.push('follow must be a boolean');
-    }
-    if (params.threads !== undefined && (typeof params.threads !== 'number' || params.threads < 1 || params.threads > 64)) {
-      result.valid = false;
-      result.errors.push('threads must be a number between 1 and 64');
-    }
-    if (params.noIgnore !== undefined && typeof params.noIgnore !== 'boolean') {
-      result.valid = false;
-      result.errors.push('noIgnore must be a boolean');
-    }
-    if (params.ignorePath !== undefined && !Array.isArray(params.ignorePath)) {
-      result.valid = false;
-      result.errors.push('ignorePath must be an array of strings');
-    }
-    if (params.root !== undefined && typeof params.root !== 'string') {
-      result.valid = false;
-      result.errors.push('root must be a string path');
-    }
-    if (params.workdir !== undefined && typeof params.workdir !== 'string') {
-      result.valid = false;
-      result.errors.push('workdir must be a string path');
-    }
-
-    result.sanitized = {
-      rules: params.rules,
-      paths: params.paths || ['.'],
-      format: params.format || 'json',
-      severity: params.severity || 'all',
-      ruleIds: params.ruleIds,
-      include: params.include,
-      exclude: params.exclude || this.getDefaultExcludes(),
-      timeoutMs: params.timeoutMs,
-      relativePaths: params.relativePaths ?? false,
-      jsonStyle: params.jsonStyle || 'stream',
-      follow: params.follow ?? false,
-      threads: params.threads,
-      noIgnore: params.noIgnore ?? false,
-      ignorePath: params.ignorePath,
-      root: params.root,
-      workdir: params.workdir,
-    };
-
-    return result;
-  }
 
   // Validate rewrite parameters
   /**
@@ -582,6 +495,12 @@ export class ParameterValidator {
       result.valid = false;
     }
 
+    // Check for bare $$$ usage (should be named for rewrite compatibility)
+    const bareTripleVars = trimmedPattern.match(/\$\$\$(?![A-Z_][A-Z0-9_]*)/g);
+    if (bareTripleVars && bareTripleVars.length > 0) {
+      result.warnings.push('Consider using named multi-metavariables (e.g., $$$ARGS, $$$BODY) instead of bare $$$ for better rewrite compatibility');
+    }
+
     // Language-specific validation
     if (language) {
       const langValidation = this.validateLanguageSpecificPattern(trimmedPattern, language);
@@ -653,7 +572,28 @@ export class ParameterValidator {
     switch (language.toLowerCase()) {
       case 'javascript':
       case 'typescript':
-        // Check for common JS/TS patterns
+        // Check for common JS/TS patterns that need body
+        if (/\bclass\s+\$[A-Z_][A-Z0-9_]*\s*(?:extends\s+[^{]*)?\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('JavaScript class pattern needs body. Use: class $NAME { $$$ } or class $NAME extends $BASE { $$$ }');
+          result.valid = false;
+        }
+        if (/\bfunction\s+\$[A-Z_][A-Z0-9_]*\s*\([^)]*\)\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('JavaScript function pattern needs body. Use: function $NAME($ARGS) { $$$ }');
+          result.valid = false;
+        }
+        if (/\btry\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('JavaScript try pattern needs body. Use: try { $$$ }');
+          result.valid = false;
+        }
+        if (/\bcatch\s*\([^)]*\)\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('JavaScript catch pattern needs body. Use: catch ($ERROR) { $$$ }');
+          result.valid = false;
+        }
+        if (/\bfinally\s*\{(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('JavaScript finally pattern needs body. Use: finally { $$$ }');
+          result.valid = false;
+        }
+        // General JS checks
         if (pattern.includes('function') && !pattern.includes('(')) {
           result.warnings.push('JavaScript function patterns usually need parentheses: function $NAME($ARGS)');
         }
@@ -670,7 +610,28 @@ export class ParameterValidator {
         break;
 
       case 'python':
-        // Check for common Python patterns
+        // Check for common Python patterns that need body
+        if (/\bclass\s+\$[A-Z_][A-Z0-9_]*\s*:(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('Python class pattern needs body. Use: class $NAME: $$$ or class $NAME($BASE): $$$');
+          result.valid = false;
+        }
+        if (/\bdef\s+\$[A-Z_][A-Z0-9_]*\s*\([^)]*\)\s*:(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('Python function pattern needs body. Use: def $NAME($ARGS): $$$');
+          result.valid = false;
+        }
+        if (/\bexcept\s+[^:]*:(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('Python except pattern needs body. Use: except $EXCEPTION as $VAR:\\n    $$$');
+          result.valid = false;
+        }
+        if (/\btry\s*:(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('Python try pattern needs body. Use: try:\\n    $$$');
+          result.valid = false;
+        }
+        if (/\bfinally\s*:(?![\s\S]*\$\$\$)/.test(pattern)) {
+          result.errors.push('Python finally pattern needs body. Use: finally:\\n    $$$');
+          result.valid = false;
+        }
+        // General Python colon check
         if (pattern.includes('def') && !pattern.includes(':')) {
           result.warnings.push('Python function patterns need colon: def $NAME($ARGS): $$$');
         }

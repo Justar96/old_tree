@@ -58,28 +58,6 @@ export const ReplaceParamsSchema = z.object({
     stdinFilepath: z.string().optional(),
 });
 /**
- * Schema for ast_scan tool input parameters.
- */
-export const ScanParamsSchema = z.object({
-    rules: z.string().optional(),
-    paths: z.array(z.string()).optional(),
-    format: z.enum(['json', 'text', 'github']).default('json'),
-    severity: z.enum(['error', 'warning', 'info', 'all']).default('all'),
-    ruleIds: z.array(z.string()).optional(),
-    include: z.array(z.string()).optional(),
-    exclude: z.array(z.string()).optional(),
-    // Additional options matching ast_search and ast_replace capabilities
-    timeoutMs: z.number().min(1000).max(180000).optional(),
-    relativePaths: z.boolean().default(false).optional(),
-    jsonStyle: z.enum(['stream', 'pretty', 'compact']).default('stream').optional(),
-    follow: z.boolean().default(false).optional(),
-    threads: z.number().min(1).max(64).optional(),
-    noIgnore: z.boolean().default(false).optional(),
-    ignorePath: z.array(z.string()).optional(),
-    root: z.string().optional(),
-    workdir: z.string().optional(),
-});
-/**
  * Schema for ast_rewrite tool input parameters.
  */
 export const RewriteParamsSchema = z.object({
@@ -147,7 +125,7 @@ export const ReplaceResultSchema = z.object({
     }),
 });
 /**
- * Structured result types emitted by ast_scan.
+ * Structured result types for rule scanning operations.
  */
 export const ScanFindingSchema = z.object({
     ruleId: z.string(),
