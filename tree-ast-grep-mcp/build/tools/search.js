@@ -14,11 +14,28 @@ export class SearchTool {
         if (!params.pattern || typeof params.pattern !== 'string') {
             throw new ValidationError('Pattern is required');
         }
+        // Normalize language aliases when provided
+        const normalizeLang = (lang) => {
+            const map = {
+                javascript: 'js',
+                typescript: 'ts',
+                jsx: 'jsx',
+                tsx: 'tsx',
+            };
+            const lower = (lang || '').toLowerCase();
+            return map[lower] || lang;
+        };
+        // Guardrail: warn about bare $$$ in patterns
+        const hasBareMulti = /\$\$\$(?![A-Za-z_][A-Za-z0-9_]*)/.test(params.pattern);
+        if (hasBareMulti) {
+            // Keep simple error to align with minimal philosophy
+            throw new ValidationError('Use named multi-node metavariables like $$$BODY instead of bare $$$');
+        }
         // Build ast-grep command directly
         const args = ['run', '--pattern', params.pattern.trim()];
         // Add language if provided
         if (params.language) {
-            args.push('--lang', params.language);
+            args.push('--lang', normalizeLang(params.language));
         }
         // Always use JSON stream for parsing
         args.push('--json=stream');
@@ -41,8 +58,22 @@ export class SearchTool {
         }
         else {
             // File mode - add paths (default to current directory)
-            const paths = params.paths || ['.'];
-            args.push(...paths);
+            const inputPaths = params.paths && Array.isArray(params.paths) && params.paths.length > 0 ? params.paths : ['.'];
+            const { valid, resolvedPaths, errors } = this.workspaceManager.validatePaths(inputPaths);
+            if (!valid) {
+                throw new ValidationError('Invalid paths', { errors });
+            }
+            // Try to infer language if not provided (based on extension of first path when it is a file)
+            if (!params.language && resolvedPaths.length === 1) {
+                const first = resolvedPaths[0].toLowerCase();
+                const inferred = first.endsWith('.ts') ? 'ts' :
+                    first.endsWith('.tsx') ? 'tsx' :
+                        first.endsWith('.jsx') ? 'jsx' :
+                            first.endsWith('.js') ? 'js' : undefined;
+                if (inferred)
+                    args.push('--lang', inferred);
+            }
+            args.push(...resolvedPaths);
         }
         try {
             const result = await this.binaryManager.executeAstGrep(args, executeOptions);

@@ -17,24 +17,50 @@ export class ScanTool {
         if (!params.id || !params.language || !params.pattern) {
             throw new ValidationError('id, language, and pattern are required');
         }
+        const normalizeLang = (lang) => {
+            const map = {
+                javascript: 'js',
+                typescript: 'ts',
+                jsx: 'jsx',
+                tsx: 'tsx',
+            };
+            const lower = (lang || '').toLowerCase();
+            return map[lower] || lang;
+        };
         // Generate simple YAML rule
-        const yaml = this.buildYaml(params);
+        const yaml = this.buildYaml({ ...params, language: normalizeLang(params.language) });
         // Create temporary rule file
         const tempDir = os.tmpdir();
         const rulesFile = path.join(tempDir, `rule-${Date.now()}.yml`);
+        let tempCodeFileForCleanup = null;
         try {
             await fs.writeFile(rulesFile, yaml, 'utf8');
             // Build scan command
             const args = ['scan', '--rule', rulesFile, '--json=stream'];
-            // Add paths
-            const paths = params.paths || ['.'];
-            args.push(...paths);
+            // Add paths or inline code via temp file
+            let tempCodeFile = null;
+            if (params.code) {
+                const extMap = { js: 'js', ts: 'ts', jsx: 'jsx', tsx: 'tsx' };
+                const ext = extMap[normalizeLang(params.language)] || 'js';
+                tempCodeFile = path.join(os.tmpdir(), `astgrep-inline-${Date.now()}.${ext}`);
+                await fs.writeFile(tempCodeFile, params.code, 'utf8');
+                args.push(tempCodeFile);
+                tempCodeFileForCleanup = tempCodeFile;
+            }
+            else {
+                const inputPaths = params.paths && Array.isArray(params.paths) && params.paths.length > 0 ? params.paths : ['.'];
+                const { valid, resolvedPaths, errors } = this.workspaceManager.validatePaths(inputPaths);
+                if (!valid) {
+                    throw new ValidationError('Invalid paths', { errors });
+                }
+                args.push(...resolvedPaths);
+            }
             const result = await this.binaryManager.executeAstGrep(args, {
                 cwd: this.workspaceManager.getWorkspaceRoot(),
                 timeout: params.timeoutMs || 30000
             });
             const findings = this.parseFindings(result.stdout);
-            return {
+            const resultObj = {
                 yaml,
                 scan: {
                     findings,
@@ -45,6 +71,7 @@ export class ScanTool {
                     }
                 }
             };
+            return resultObj;
         }
         finally {
             // Cleanup
@@ -52,6 +79,12 @@ export class ScanTool {
                 await fs.unlink(rulesFile);
             }
             catch { }
+            if (tempCodeFileForCleanup) {
+                try {
+                    await fs.unlink(tempCodeFileForCleanup);
+                }
+                catch { }
+            }
         }
     }
     buildYaml(params) {
@@ -65,16 +98,15 @@ export class ScanTool {
         ];
         // Add simple constraints if provided
         if (params.where && params.where.length > 0) {
-            lines.push('constraints:');
+            lines.push('  constraints:');
             for (const constraint of params.where) {
-                lines.push(`  ${constraint.metavariable}:`);
+                lines.push(`    ${constraint.metavariable}:`);
                 if (constraint.regex) {
-                    lines.push(`    regex: ${JSON.stringify(constraint.regex)}`);
+                    lines.push(`      regex: ${JSON.stringify(constraint.regex)}`);
                 }
                 else if (constraint.equals) {
-                    // Escape and make exact match
                     const escaped = constraint.equals.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    lines.push(`    regex: ${JSON.stringify('^' + escaped + '$')}`);
+                    lines.push(`      regex: ${JSON.stringify('^' + escaped + '$')}`);
                 }
             }
         }

@@ -3,89 +3,9 @@
  * Simple, direct testing utilities following project philosophy
  */
 
-export class TestAssert {
-  static assertTrue(condition, message = 'Assertion failed') {
-    if (!condition) {
-      throw new Error(`AssertionError: ${message}`);
-    }
-  }
+import { MCPTestAssert } from './mcp-inspector.js';
 
-  static assertFalse(condition, message = 'Expected false') {
-    if (condition) {
-      throw new Error(`AssertionError: ${message}`);
-    }
-  }
-
-  static assertEqual(actual, expected, message = 'Values not equal') {
-    if (actual !== expected) {
-      throw new Error(`AssertionError: ${message}\nExpected: ${expected}\nActual: ${actual}`);
-    }
-  }
-
-  static assertNotEqual(actual, expected, message = 'Values should not be equal') {
-    if (actual === expected) {
-      throw new Error(`AssertionError: ${message}\nBoth values: ${actual}`);
-    }
-  }
-
-  static assertDeepEqual(actual, expected, message = 'Objects not deeply equal') {
-    const actualStr = JSON.stringify(actual, null, 2);
-    const expectedStr = JSON.stringify(expected, null, 2);
-
-    if (actualStr !== expectedStr) {
-      throw new Error(`AssertionError: ${message}\nExpected: ${expectedStr}\nActual: ${actualStr}`);
-    }
-  }
-
-  static assertThrows(fn, expectedError, message = 'Expected function to throw') {
-    try {
-      fn();
-      throw new Error(`AssertionError: ${message}`);
-    } catch (error) {
-      if (expectedError && !error.message.includes(expectedError)) {
-        throw new Error(`AssertionError: Expected error containing "${expectedError}", got "${error.message}"`);
-      }
-    }
-  }
-
-  static async assertThrowsAsync(fn, expectedError, message = 'Expected async function to throw') {
-    try {
-      await fn();
-      throw new Error(`AssertionError: ${message}`);
-    } catch (error) {
-      if (expectedError && !error.message.includes(expectedError)) {
-        throw new Error(`AssertionError: Expected error containing "${expectedError}", got "${error.message}"`);
-      }
-    }
-  }
-
-  static assertContains(haystack, needle, message = 'String not found') {
-    if (!haystack.includes(needle)) {
-      throw new Error(`AssertionError: ${message}\nExpected "${haystack}" to contain "${needle}"`);
-    }
-  }
-
-  static assertNotContains(haystack, needle, message = 'String should not be found') {
-    if (haystack.includes(needle)) {
-      throw new Error(`AssertionError: ${message}\nExpected "${haystack}" to not contain "${needle}"`);
-    }
-  }
-
-  static assertInstanceOf(obj, constructor, message = 'Object not instance of expected type') {
-    if (!(obj instanceof constructor)) {
-      throw new Error(`AssertionError: ${message}\nExpected instance of ${constructor.name}`);
-    }
-  }
-
-  static assertArrayLength(array, expectedLength, message = 'Array length mismatch') {
-    if (!Array.isArray(array)) {
-      throw new Error(`AssertionError: Expected array, got ${typeof array}`);
-    }
-    if (array.length !== expectedLength) {
-      throw new Error(`AssertionError: ${message}\nExpected length: ${expectedLength}\nActual length: ${array.length}`);
-    }
-  }
-}
+export { MCPTestAssert as TestAssert };
 
 export class TestSuite {
   constructor(name) {
@@ -125,7 +45,8 @@ export class TestSuite {
       passed: 0,
       failed: 0,
       total: this.tests.length,
-      failures: []
+      failures: [],
+      inspectionResults: null
     };
 
     // Run beforeAll hooks
@@ -134,6 +55,9 @@ export class TestSuite {
     }
 
     try {
+      // Clear previous inspection results
+      MCPTestAssert.clearInspectionResults();
+
       for (const test of this.tests) {
         const testName = `${this.name} > ${test.name}`;
 
@@ -173,6 +97,10 @@ export class TestSuite {
           }
         }
       }
+
+      // Add inspection results to suite results
+      results.inspectionResults = MCPTestAssert.getInspectionResults();
+
     } finally {
       // Run afterAll hooks
       for (const hook of this.afterAllHooks) {

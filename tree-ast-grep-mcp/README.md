@@ -33,6 +33,7 @@ Three simple tools that directly execute ast-grep commands:
 - **Named Metavariables** - `$NAME`, `$ARG`, `$$$BODY` work perfectly
 - **Auto-Install** - Downloads platform-specific ast-grep binary
 - **Minimal Codebase** - ~300 lines, crystal clear logic
+- **🔍 MCP Inspector** - Enhanced testing with Model Context Protocol integration
 
 ## 📖 Usage Examples
 
@@ -92,13 +93,20 @@ Each tool: Validate → Build Command → Execute → Parse → Return
 Patterns work exactly like ast-grep CLI:
 
 ```bash
-# Test patterns directly
-ast-grep run --pattern "console.log($ARG)" --lang javascript file.js
+# Run unit suites via Vitest adapter (fast)
+npm test
 
-# Test replacements
-ast-grep run --pattern "var $NAME" --rewrite "let $NAME" --lang javascript file.js
+# Watch mode
+npm run test:watch
 
-# Test rules
+# Integration/e2e via adapter (requires ast-grep availability)
+$env:AST_GREP_AVAILABLE="1"; npm test   # PowerShell
+# or
+AST_GREP_AVAILABLE=1 npm test           # bash
+
+# Direct ast-grep CLI examples
+ast-grep run --pattern "console.log($ARG)" --lang js file.js
+ast-grep run --pattern "var $NAME" --rewrite "let $NAME" --lang js file.js
 ast-grep scan --rule rule.yml file.js
 ```
 
@@ -130,8 +138,19 @@ npx tree-ast-grep-mcp --auto-install
 - `console.log($ARG)` → `logger.info($ARG)`
 
 **⚠️ Use With Care:**
-- Bare `$$$` produces literal "$$$" in replacements
-- Complex structural patterns may not match reliably
+- Always name multi-node variables: use `$$$BODY`, `$$$ARGS` instead of bare `$$$`
+- Bare `$$$` in replacements does not expand and is now rejected by this server
+- Keep patterns aligned with ast-grep docs; test them with the CLI
+
+## 🔤 Language IDs and Paths
+
+- Accepted languages are ast-grep’s IDs: `js`, `ts`, `jsx`, `tsx`, etc.
+- Aliases like `javascript`/`typescript` are mapped internally to `js`/`ts`.
+- Inline `code` requires `language`.
+- For file scans:
+  - Paths are resolved relative to `WORKSPACE_ROOT` (auto-detected if unset).
+  - Absolute paths are supported; Windows paths are normalized.
+  - If a single file with a known extension is provided and `language` is omitted, the server infers `--lang` from the filename.
 
 ## 🚫 What This ISN'T
 
@@ -147,6 +166,30 @@ npx tree-ast-grep-mcp --auto-install
 - ✅ Perfect CLI compatibility
 - ✅ Zero-overhead tool integration
 - ✅ Simple, maintainable codebase
+
+## 🔍 MCP Inspector Integration
+
+Enhanced testing capabilities with Model Context Protocol integration for real-world agent usage alignment:
+
+```bash
+# Run tests with MCP Inspector
+npm run test:mcp
+
+# View MCP Inspector demo
+npm run demo:mcp
+
+# Generate comprehensive MCP reports
+npm run test:mcp-all
+```
+
+**Key MCP Inspector Features:**
+- Pattern matching validation with structured results
+- Code transformation inspection and verification
+- Real-world usage simulation for AI agents
+- MCP-compliant test reporting format
+- Enhanced debugging with inspection data
+
+See [`docs/MCP_INSPECTOR.md`](docs/MCP_INSPECTOR.md) for detailed documentation.
 
 ## 🤝 Contributing
 

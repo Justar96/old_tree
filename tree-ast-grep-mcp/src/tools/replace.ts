@@ -20,12 +20,30 @@ export class ReplaceTool {
       throw new ValidationError('Replacement is required');
     }
 
+    // Guardrail: discourage bare $$$ which ast-grep doesn't expand in rewrite
+    const hasBareMultiInPattern = /\$\$\$(?![A-Za-z_][A-Za-z0-9_]*)/.test(params.pattern);
+    const hasBareMultiInReplacement = /\$\$\$(?![A-Za-z_][A-Za-z0-9_]*)/.test(params.replacement);
+    if (hasBareMultiInPattern || hasBareMultiInReplacement) {
+      throw new ValidationError('Use named multi-node metavariables like $$$BODY instead of bare $$$ in pattern/replacement');
+    }
+
+    const normalizeLang = (lang: string) => {
+      const map: Record<string, string> = {
+        javascript: 'js',
+        typescript: 'ts',
+        jsx: 'jsx',
+        tsx: 'tsx',
+      };
+      const lower = (lang || '').toLowerCase();
+      return map[lower] || lang;
+    };
+
     // Build ast-grep command directly
     const args = ['run', '--pattern', params.pattern.trim(), '--rewrite', params.replacement];
 
     // Add language if provided
     if (params.language) {
-      args.push('--lang', params.language);
+      args.push('--lang', normalizeLang(params.language));
     }
 
     // Handle dry-run vs actual replacement
@@ -49,8 +67,12 @@ export class ReplaceTool {
       executeOptions.stdin = params.code;
     } else {
       // File mode - add paths (default to current directory)
-      const paths = params.paths || ['.'];
-      args.push(...paths);
+      const inputPaths: string[] = params.paths && Array.isArray(params.paths) && params.paths.length > 0 ? params.paths : ['.'];
+      const { valid, resolvedPaths, errors } = this.workspaceManager.validatePaths(inputPaths);
+      if (!valid) {
+        throw new ValidationError('Invalid paths', { errors });
+      }
+      args.push(...resolvedPaths);
     }
 
     try {

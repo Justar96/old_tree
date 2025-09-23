@@ -94,6 +94,25 @@ export class WorkspaceManager {
                 break; // Reached filesystem root
             currentDir = parentDir;
         }
+        // Try common nested project directories (e.g., monorepo layout)
+        try {
+            const entries = fsSync.readdirSync(currentDir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    const candidate = path.join(currentDir, entry.name);
+                    try {
+                        fsSync.accessSync(path.join(candidate, 'package.json'));
+                        fsSync.accessSync(path.join(candidate, 'src'));
+                        console.error(`Using nested project directory as workspace root: ${candidate}`);
+                        return candidate;
+                    }
+                    catch {
+                        // Not a project directory
+                    }
+                }
+            }
+        }
+        catch { }
         // Enhanced fallback: use current directory with validation
         const fallback = process.cwd();
         console.error(`No workspace indicators found, using current directory: ${fallback}`);
